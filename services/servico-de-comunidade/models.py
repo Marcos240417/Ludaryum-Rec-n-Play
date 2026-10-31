@@ -1,4 +1,3 @@
-# Caminho: models.py
 from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, UniqueConstraint
 from sqlalchemy.orm import relationship
 from database import Base
@@ -20,7 +19,7 @@ class PublicacaoModel(Base):
     id = Column(Integer, primary_key=True, index=True)
     autor = Column(String, nullable=False)
     autor_arroba = Column(String, nullable=False)
-    creator_email = Column(String, nullable=True)            # Suporte a notificações ao criador
+    creator_email = Column(String, nullable=True)             # Suporte a notificações ao criador
     comunidade = Column(String, nullable=False)
     tipo_badge = Column(String, nullable=False)
     titulo = Column(String, nullable=False)
@@ -53,7 +52,7 @@ class PublicacaoCandidatoModel(Base):
     username = Column(String, nullable=False)
     papel = Column(String, nullable=True)
     status = Column(String, default="pendente") # "pendente", "aprovado", "reprovado"
-    chat_liberado = Column(Integer, default=0)  # <-- ADICIONE ESTA LINHA AQUI
+    chat_liberado = Column(Integer, default=0)  # Status de liberação do chat
     created_at = Column(DateTime, default=datetime.utcnow)
 
     __table_args__ = (UniqueConstraint('publicacao_id', 'user_email', name='_pub_user_candidato_uc'),)

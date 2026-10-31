@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="admin.css">
     <link rel="icon" href="data:,">
 </head>
-<body>
+<body onload="verificarSessaoAdmin()">
     <div class="dashboard-container">
         <!-- Sidebar de Navegação -->
         <aside class="sidebar" style="display: flex; flex-direction: column; height: 100vh; box-sizing: border-box;">
@@ -38,7 +38,7 @@
         <main class="main-content">
             <header>
                 <h1>Painel de Controlo Operacional</h1>
-                <div class="status-badge"><span class="dot"></span> Sistema Ativo (Windows Native)</div>
+                <div class="status-badge"><span class="dot"></span> Sistema Ativo (Gateway Network)</div>
             </header>
 
             <!-- Aba: Visão Geral -->
@@ -76,7 +76,7 @@
 
             <!-- Aba: Utilizadores -->
             <section id="users-tab" class="tab-content">
-                <h2>Gestão de Utilizadores (Auth Service - 8001)</h2>
+                <h2>Gestão de Utilizadores (Auth Service)</h2>
                 
                 <!-- Tabela de Utilizadores Ativos -->
                 <h3 style="margin-top: 20px; font-size: 1.1rem; color: var(--success);">🟢 Utilizadores Ativos</h3>
@@ -117,7 +117,7 @@
 
             <!-- Aba: Projetos -->
             <section id="projects-tab" class="tab-content">
-                <h2>Gestão de Projetos e Portefólios (Project Service - 8081)</h2>
+                <h2>Gestão de Projetos e Portefólios (Project Service)</h2>
                 
                 <!-- Tabela de Projetos Ativos -->
                 <h3 style="color: var(--success); margin-top: 20px; font-size: 1.1rem;">🟢 Projetos Ativos</h3>
@@ -177,7 +177,7 @@
             <section id="gateway-tab" class="tab-content">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
                     <div>
-                        <h2>Estado do Ecossistema em Rede (API Gateway - 8005)</h2>
+                        <h2>Estado do Ecossistema em Rede (API Gateway)</h2>
                         <p style="color: var(--text-muted); font-size: 0.9rem;">Monitorização em tempo real de portas e rotas encaminhadas pelo Gateway central.</p>
                     </div>
                     <button onclick="pingServices()" style="background: var(--accent-color); padding: 0.5rem 1rem; font-size: 0.85rem;">🔄 Atualizar Estado</button>
@@ -274,5 +274,56 @@
     </div>
 
     <script src="admin.js"></script>
+    <script>
+        // Função de segurança rigorosa para validar se o utilizador autenticado é administrador
+        async function verificarSessaoAdmin() {
+            const token = localStorage.getItem('ludarium_token') || localStorage.getItem('access_token');
+            if (!token) {
+                window.location.href = '/home-ui/login.html';
+                return;
+            }
+
+            try {
+                const response = await fetch('/me', {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                
+                if (!response.ok) throw new Error('Sessão inválida');
+                
+                const user = await response.json();
+                const isAdmin = (user.username === 'admin' || user.email === 'admin@ludarium.com');
+                
+                if (!isAdmin) {
+                    alert('Acesso negado: esta área é restrita exclusivamente a administradores.');
+                    window.location.href = '/home-ui/home.html';
+                    return;
+                }
+
+                // Se for admin, inicializa os dados do painel se a função existir
+                if (typeof carregarDadosAdmin === 'function') {
+                    carregarDadosAdmin();
+                }
+            } catch (e) {
+                console.error('Erro de autenticação:', e);
+                window.location.href = '/home-ui/login.html';
+            }
+        }
+
+        function voltarHome() {
+            const token = localStorage.getItem('ludarium_token') || localStorage.getItem('access_token');
+            if (token) {
+                window.location.href = `/home-ui/home.html?token=${token}`;
+            } else {
+                window.location.href = '/home-ui/home.html';
+            }
+        }
+
+        function sairSessao() {
+            localStorage.removeItem('ludarium_token');
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('ludarium_user');
+            window.location.href = '/home-ui/login.html';
+        }
+    </script>
 </body>
 </html>

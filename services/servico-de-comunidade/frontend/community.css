@@ -118,10 +118,6 @@ body {
         flex-direction: column;
         align-items: flex-start;
     }
-    .whatsapp-container {
-        grid-template-columns: 1fr !important;
-        height: auto !important;
-    }
 }
 
 /* Barras Laterais (Sidebar) */
@@ -146,7 +142,7 @@ body {
     padding-bottom: 0.5rem;
 }
 
-/* Estilização de Scrollbars para Chat e Listas */
+/* Scrollbars */
 ::-webkit-scrollbar {
     width: 6px;
     height: 6px;

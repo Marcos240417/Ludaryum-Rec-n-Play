@@ -1,10 +1,7 @@
-const AUTH_SERVICE_URL = "http://localhost:8001";
-const PROJECT_SERVICE_URL = "http://localhost:8081";
-const SERVICO_DE_COMUNIDADE_URL = "http://localhost:8002";
-const SERVICO_DE_CAMPANHAS_URL = 'http://localhost:8003';
-const SERVICO_DE_CAMPANHAS = SERVICO_DE_CAMPANHAS_URL;
-const SERVICO_DE_PERFIL_URL = "http://localhost:8004";
-const GATEWAY_URL = "http://localhost:8005";
+// ==========================================
+// LUDARIUM - DASHBOARD & PROJETOS (DASHBOARD.JS)
+// Compatível com Localhost e Cloudflare Tunnel
+// ==========================================
 
 let currentAdminRecipient = null;
 let projetoAtualId = null; // Guarda o ID do jogo em teste para o feedback pós-jogo
@@ -67,7 +64,7 @@ function definirBotaoCarregamento(botao, aCarregar, textoOriginal = "Guardar Alt
 function obterToken() {
     let token = localStorage.getItem('ludarium_token') || localStorage.getItem('access_token');
     if (!token) {
-        window.location.href = 'login.html';
+        window.location.href = '../home-ui/login.html';
     }
     return token;
 }
@@ -112,7 +109,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (token) {
                 e.preventDefault();
                 try {
-                    const urlDestino = new URL(link.href);
+                    const urlDestino = new URL(link.href, window.location.origin);
                     urlDestino.searchParams.set('token', token);
                     window.location.href = urlDestino.toString();
                 } catch (err) {
@@ -172,46 +169,48 @@ async function verificarSessaoDashboard() {
 }
 
 /**
- * Verifica as permissões de administrador
+ * Verifica estritamente as permissões de administrador e isola elementos UI exclusivos
  */
 async function verificarPermissoesAdmin() {
     const token = obterToken();
     if (!token) return;
 
     try {
-        const response = await fetch(`${GATEWAY_URL}/me`, {
+        const response = await fetch(`/me`, {
             headers: { 'Authorization': 'Bearer ' + token }
         });
         if (!response.ok) return;
         const user = await response.json();
 
-        const searchBox = document.getElementById('adminSearchBox');
-        if (searchBox) searchBox.style.display = 'block';
+        const isAdmin = (user.username === 'admin' || user.email === 'admin@ludarium.com' || user.is_admin === true);
 
-        if (user.username === 'admin' || user.email === 'admin@ludarium.com') {
-            console.log('Sessão de Administrador autenticada.');
-            const elementosAdminExclusivos = document.querySelectorAll('.admin-only');
+        const elementosAdminExclusivos = document.querySelectorAll('.admin-only');
+        
+        if (isAdmin) {
+            console.log('Sessão de Administrador Real autenticada.');
             elementosAdminExclusivos.forEach(el => {
                 el.classList.remove('admin-only');
                 el.style.display = 'block';
             });
         } else {
-            const elementosAdminExclusivos = document.querySelectorAll('.admin-only');
-            elementosAdminExclusivos.forEach(el => el.style.display = 'none');
+            elementosAdminExclusivos.forEach(el => {
+                el.classList.add('admin-only');
+                el.style.display = 'none';
+            });
         }
     } catch (e) {
-        console.error('Erro ao verificar permissões:', e);
+        console.error('Erro ao verificar permissões de admin:', e);
     }
 }
 
 /**
- * Termina a sessão do utilizador
+ * Termina a sessão do utilizador com redirecionamento relativo seguro
  */
 function fazerLogout() {
     localStorage.removeItem('ludarium_token');
     localStorage.removeItem('access_token');
     localStorage.removeItem('ludarium_user');
-    window.location.href = 'login.html';
+    window.location.href = '../home-ui/login.html';
 }
 
 function abrirModalProjeto() {
@@ -239,7 +238,7 @@ async function carregarCampanhasNoSelect() {
     if (!select) return;
 
     try {
-        const response = await fetch(`${SERVICO_DE_CAMPANHAS}/campanhas`);
+        const response = await fetch(`/campanhas`);
         if (!response.ok) return;
         const campanhas = await response.json();
 
@@ -270,7 +269,7 @@ async function pesquisarMembroEquipe() {
     resultDiv.innerHTML = 'A pesquisar...';
 
     try {
-        const response = await fetch(`${GATEWAY_URL}/users/search?username=${encodeURIComponent(termo)}`, {
+        const response = await fetch(`/users/search?username=${encodeURIComponent(termo)}`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
 
@@ -371,7 +370,7 @@ async function enviarNovoProjeto(event) {
     }
 
     try {
-        const response = await fetch(`${PROJECT_SERVICE_URL}/projects`, {
+        const response = await fetch(`/projects`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}` },
             body: formData
@@ -400,7 +399,7 @@ async function carregarProjetosHome(tagFiltro = '') {
     grid.innerHTML = '<p style="color: #9ca3af; padding: 10px;">A carregar projetos...</p>';
 
     try {
-        let url = `${PROJECT_SERVICE_URL}/projects`;
+        let url = `/projects`;
         if (tagFiltro && tagFiltro.trim() !== '') {
             url += `?tag=${encodeURIComponent(tagFiltro)}`;
         }
@@ -418,9 +417,18 @@ async function carregarProjetosHome(tagFiltro = '') {
             return;
         }
 
-        // Identificação segura, síncrona e imediata através do Token JWT (evita race conditions)
         const usuarioLogado = obterUtilizadorAtualDoToken();
-        const éAdmin = (usuarioLogado === 'admin' || usuarioLogado === 'admin@ludarium.com');
+        const token = obterToken();
+        
+        // Verifica se é admin real consultando via flag ou identidade
+        let éAdmin = (usuarioLogado === 'admin' || usuarioLogado === 'admin@ludarium.com');
+        try {
+            const meRes = await fetch(`/me`, { headers: { 'Authorization': 'Bearer ' + token } });
+            if (meRes.ok) {
+                const meData = await meRes.json();
+                éAdmin = (meData.username === 'admin' || meData.email === 'admin@ludarium.com' || meData.is_admin === true);
+            }
+        } catch (e) {}
 
         projetos.forEach(p => {
             const card = document.createElement('div');
@@ -428,7 +436,7 @@ async function carregarProjetosHome(tagFiltro = '') {
             
             let imagemUrl = 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80';
             if (p.poster_path) {
-                imagemUrl = `${PROJECT_SERVICE_URL}${p.poster_path}`;
+                imagemUrl = `${p.poster_path}`;
             }
 
             const donoProjeto = (p.owner || p.user_id || '').trim().toLowerCase();
@@ -446,7 +454,7 @@ async function carregarProjetosHome(tagFiltro = '') {
 
             let rawBuildPath = p.build_path;
             if (!rawBuildPath && p.executavel_navegador === 1) {
-                rawBuildPath = `sandbox_builds/${p.title.toLowerCase().replace(/[\s]+/g, '_')}`;
+                rawBuildPath = `sandbox_builds/${(p.title || '').toLowerCase().replace(/[\s]+/g, '_')}`;
             }
             const safeBuildPath = (rawBuildPath || '').replace(/\\/g, '/');
 
@@ -463,7 +471,7 @@ async function carregarProjetosHome(tagFiltro = '') {
                 const listaMembros = p.members.split(',').map(m => m.trim()).filter(m => m);
                 if (listaMembros.length > 0) {
                     const chipsMembros = listaMembros.map(m => `
-                        <a href="http://127.0.0.1:8004/frontend/perfil.html?user=${encodeURIComponent(m)}" style="color: #d8b4fe; background: rgba(124, 58, 237, 0.25); border: 1px solid rgba(124, 58, 237, 0.4); padding: 2px 8px; border-radius: 12px; text-decoration: none; font-size: 0.75rem; font-weight: 600; display: inline-flex; align-items: center; gap: 3px;" title="Ver perfil de @${m}">
+                        <a href="perfil.html?user=${encodeURIComponent(m)}" style="color: #d8b4fe; background: rgba(124, 58, 237, 0.25); border: 1px solid rgba(124, 58, 237, 0.4); padding: 2px 8px; border-radius: 12px; text-decoration: none; font-size: 0.75rem; font-weight: 600; display: inline-flex; align-items: center; gap: 3px;" title="Ver perfil de @${m}">
                             👤 @${m}
                         </a>
                     `).join('');
@@ -516,7 +524,7 @@ async function carregarProjetosHome(tagFiltro = '') {
         });
     } catch (e) {
         console.error('Erro ao buscar projetos:', e);
-        grid.innerHTML = `<p style="color: #ef4444; padding: 10px;">Erro ao carregar projetos (Servidor de projetos na porta 8081 indisponível ou offline).</p>`;
+        grid.innerHTML = `<p style="color: #ef4444; padding: 10px;">Erro ao carregar projetos.</p>`;
     }
 }
 
@@ -547,7 +555,7 @@ async function carregarLeaderboard() {
     if (!container) return;
 
     try {
-        const response = await fetch(`${SERVICO_DE_PERFIL_URL}/perfil/leaderboard`);
+        const response = await fetch(`/perfil/leaderboard`);
         if (!response.ok) throw new Error('Não foi possível carregar o leaderboard.');
 
         const utilizadores = await response.json();
@@ -587,7 +595,7 @@ async function curtirProjeto(event, id) {
     event.stopPropagation();
     const token = obterToken();
     try {
-        const response = await fetch(`${PROJECT_SERVICE_URL}/projects/${id}/avaliar`, {
+        const response = await fetch(`/projects/${id}/avaliar`, {
             method: 'PATCH',
             headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -605,7 +613,7 @@ async function favoritarProjeto(event, id) {
     event.stopPropagation();
     const token = obterToken();
     try {
-        const response = await fetch(`${PROJECT_SERVICE_URL}/projects/${id}/favorito`, {
+        const response = await fetch(`/projects/${id}/favorito`, {
             method: 'PATCH',
             headers: { 
                 'Authorization': `Bearer ${token}`,
@@ -676,7 +684,7 @@ async function carregarCampanhasNoSelectEdicao(selectedCampaignId) {
     if (!select) return;
 
     try {
-        const response = await fetch(`${SERVICO_DE_CAMPANHAS}/campanhas`);
+        const response = await fetch(`/campanhas`);
         if (!response.ok) return;
         const campanhas = await response.json();
 
@@ -710,7 +718,7 @@ async function pesquisarMembroEquipeEdicao() {
     resultDiv.innerHTML = 'A pesquisar...';
 
     try {
-        const response = await fetch(`${GATEWAY_URL}/users/search?username=${encodeURIComponent(termo)}`, {
+        const response = await fetch(`/users/search?username=${encodeURIComponent(termo)}`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
 
@@ -798,7 +806,7 @@ async function salvarEdicaoProjeto(event) {
     definirBotaoCarregamento(btnSubmit, true, "Guardar Alterações");
 
     try {
-        const response = await fetch(`${PROJECT_SERVICE_URL}/projects/${id}`, {
+        const response = await fetch(`/projects/${id}`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
@@ -830,7 +838,7 @@ async function excluirProjeto(event, id) {
     const token = obterToken();
 
     try {
-        const response = await fetch(`${PROJECT_SERVICE_URL}/projects/${id}`, {
+        const response = await fetch(`/projects/${id}`, {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -857,7 +865,7 @@ function executarJogo(projectId, buildPath) {
     const partes = buildPath.replace(/\\/g, '/').split('/');
     const pastaJogo = partes[partes.length - 1];
     
-    iframe.src = `${PROJECT_SERVICE_URL}/sandbox/${pastaJogo}/index.html`;
+    iframe.src = `/sandbox/${pastaJogo}/index.html`;
     container.style.display = 'block';
     container.scrollIntoView({ behavior: 'smooth' });
 }
@@ -885,7 +893,7 @@ async function submeterFeedbackJogo(projectId, nota, comentario) {
     };
 
     try {
-        const response = await fetch(`${GATEWAY_URL}/projects/${projectId}/testar`, {
+        const response = await fetch(`/projects/${projectId}/testar`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -956,7 +964,7 @@ async function carregarMensagensPrivadas() {
     if (!container) return;
 
     try {
-        const response = await fetch(`${GATEWAY_URL}/messages/my-messages`, {
+        const response = await fetch(`/messages/my-messages`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
 
@@ -993,14 +1001,14 @@ async function carregarMensagensPrivadas() {
         });
     } catch (error) {
         console.error('Erro ao buscar mensagens privadas:', error);
-        container.innerHTML = '<span style="color: #ef4444; font-size: 0.9rem;">Erro ao carregar mensagens (Gateway indisponível).</span>';
+        container.innerHTML = '<span style="color: #ef4444; font-size: 0.9rem;">Erro ao carregar mensagens.</span>';
     }
 }
 
 async function apagarMensagem(msgId) {
     const token = obterToken();
     try {
-        const response = await fetch(`${GATEWAY_URL}/messages/${msgId}`, {
+        const response = await fetch(`/messages/${msgId}`, {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -1025,7 +1033,7 @@ async function pesquisarUtilizadorAdmin() {
     const queryParam = termo.includes('@') ? `email=${encodeURIComponent(termo)}` : `username=${encodeURIComponent(termo)}`;
 
     try {
-        const response = await fetch(`${GATEWAY_URL}/users/search?${queryParam}`, {
+        const response = await fetch(`/users/search?${queryParam}`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
 
@@ -1071,7 +1079,7 @@ async function submitAdminMessage() {
     }
 
     try {
-        const response = await fetch(`${GATEWAY_URL}/messages/send-admin-message?recipient_username=${encodeURIComponent(recipient)}&content=${encodeURIComponent(content)}`, {
+        const response = await fetch(`/messages/send-admin-message?recipient_username=${encodeURIComponent(recipient)}&content=${encodeURIComponent(content)}`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -1087,7 +1095,7 @@ async function submitAdminMessage() {
 
 async function atualizarPerfilMenu(token) {
     try {
-        const response = await fetch(`${GATEWAY_URL}/me`, {
+        const response = await fetch(`/me`, {
             headers: { 'Authorization': 'Bearer ' + token }
         });
         if (!response.ok) return;
@@ -1118,7 +1126,7 @@ async function carregarNotificacoes() {
     if (!token || !list) return;
 
     try {
-        const response = await fetch(`${GATEWAY_URL}/notifications`, {
+        const response = await fetch(`/notifications`, {
             headers: { 'Authorization': 'Bearer ' + token }
         });
         if (!response.ok) return;
@@ -1174,7 +1182,7 @@ function toggleNotificationsMenu() {
 async function marcarNotificacaoLida(id) {
     const token = obterToken();
     try {
-        await fetch(`${GATEWAY_URL}/notifications/${id}/read`, {
+        await fetch(`/notifications/${id}/read`, {
             method: 'PATCH',
             headers: { 'Authorization': 'Bearer ' + token }
         });
@@ -1194,7 +1202,7 @@ async function carregarProjetosSobInspecaoUsuario() {
     if (!token || !usuarioLogado) return;
 
     try {
-        const response = await fetch(`${PROJECT_SERVICE_URL}/projects`, {
+        const response = await fetch(`/projects`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         if (!response.ok) return;
@@ -1269,7 +1277,7 @@ async function enviarRespostaInspecaoDireta(projectId) {
     }
 
     try {
-        const response = await fetch(`${PROJECT_SERVICE_URL}/projects/${projectId}/reply-inspection`, {
+        const response = await fetch(`/projects/${projectId}/reply-inspection`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

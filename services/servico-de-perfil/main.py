@@ -17,7 +17,8 @@ import httpx
 SECRET_KEY = "ludarium_super_secret_key_jwt"
 ALGORITHM = "HS256"
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="http://localhost:8001/login")
+# Esquema flexível adaptável para ambiente local ou túnel Cloudflare
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login", auto_error=False)
 
 app = FastAPI(title="Serviço de Perfil - Ludarium", version="1.0.0")
 
@@ -62,6 +63,8 @@ def obter_utilizador_atual(token: str = Depends(oauth2_scheme)):
         detail="Não foi possível validar as credenciais de autenticação",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    if not token:
+        raise credentials_exception
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub") or payload.get("email")
@@ -154,10 +157,9 @@ async def eliminar_perfil(
     await db.commit()
 
     try:
-        auth_service_url = "http://localhost:8001" 
         headers = {"Authorization": authorization} if authorization else {}
         async with httpx.AsyncClient() as client:
-            await client.delete(f"{auth_service_url}/users/me", headers=headers)
+            await client.delete("/users/me", headers=headers)
     except Exception as e:
         print(f"Erro ao comunicar com o serviço de autenticação para apagar o utilizador: {e}")
 

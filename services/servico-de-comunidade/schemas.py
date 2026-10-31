@@ -1,4 +1,3 @@
-# Caminho: schemas.py
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
@@ -37,7 +36,7 @@ class PublicacaoResponse(BaseModel):
     id: int
     autor: str
     autor_arroba: str
-    creator_email: Optional[str] = None
+    creator_email: Optional[str] = None  # Sincronizado com o model e rotas
     comunidade: str
     tipo_badge: str
     titulo: str
@@ -52,7 +51,6 @@ class PublicacaoResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# --- NOVO SCHEMA: Gestão de Candidatos / Interessados em Campanhas ---
 class CandidatoResponse(BaseModel):
     id: int
     publicacao_id: int
@@ -61,6 +59,7 @@ class CandidatoResponse(BaseModel):
     username: str
     papel: Optional[str] = None
     status: str
+    chat_liberado: Optional[int] = 0     # Adicionado para suportar o novo campo do model
     avatar: str
 
     class Config:
@@ -100,7 +99,7 @@ class ForumResponse(BaseModel):
     creator_email: str
     is_suspended: Optional[int] = 0
     suspend_reason: Optional[str] = None
-    suspended_until: Optional[datetime] = None  # Suporte ao prazo limite da contagem regressiva
+    suspended_until: Optional[datetime] = None  
     created_at: datetime
 
     class Config:
@@ -128,14 +127,14 @@ class MembroForumResponse(BaseModel):
 # --- SCHEMAS: GRUPOS PRIVADOS, RECRUTAMENTO E CHATS COM TÍTULO ---
 
 class GrupoPrivadoCreate(BaseModel):
-    nome: str  # Título obrigatório para o chat ou grupo
+    nome: str  
     descricao: Optional[str] = ""
-    tipo: Optional[str] = "privado"  # "privado" (recrutamento) ou "grupo" (produção/jogos)
+    tipo: Optional[str] = "privado"  
     membros_usernames: Optional[List[str]] = []
 
 class MembroPapelUpdate(BaseModel):
     user_email: str
-    role: str  # "admin" (1 a 3 administradores) ou "membro"
+    role: str  
 
 class GrupoPrivadoResponse(BaseModel):
     id: int

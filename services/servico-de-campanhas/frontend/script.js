@@ -1,10 +1,7 @@
-const AUTH_SERVICE_URL = "http://localhost:8001";
-const PROJECT_SERVICE_URL = "http://localhost:8081";
-const SERVICO_DE_COMUNIDADE_URL = "http://localhost:8002";
-const SERVICO_DE_CAMPANHAS_URL = "http://localhost:8003";
-const SERVICO_DE_CAMPANHAS = SERVICO_DE_CAMPANHAS_URL;
-const SERVICO_DE_PERFIL_URL = "http://localhost:8004";
-const GATEWAY_URL = "http://localhost:8005";
+// ==========================================
+// LUDARIUM - SCRIPT DE CAMPANHAS (CAMPAIGNS.JS)
+// Compatível com Localhost e Cloudflare Tunnel
+// ==========================================
 
 /**
  * Exibe uma notificação Toast flutuante elegante no canto inferior direito
@@ -42,7 +39,40 @@ function mostrarToast(mensagem, tipo = 'sucesso') {
 }
 
 /**
- * Sincronização automática do token entre portas e carregamento inicial
+ * Verifica as permissões de administrador consultando o endpoint protegido `/me`
+ */
+async function verificarPermissoesAdmin() {
+    const token = localStorage.getItem('ludarium_token') || localStorage.getItem('access_token');
+    if (!token) return;
+
+    try {
+        const response = await fetch(`/me`, {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (!response.ok) return;
+        const user = await response.json();
+
+        const isAdmin = (user.username === 'admin' || user.email === 'admin@ludarium.com' || user.is_admin === true);
+        const elementosAdmin = document.querySelectorAll('.admin-only');
+
+        if (isAdmin) {
+            elementosAdmin.forEach(el => {
+                el.classList.remove('admin-only');
+                el.style.display = 'block';
+            });
+        } else {
+            elementosAdmin.forEach(el => {
+                el.classList.add('admin-only');
+                el.style.display = 'none';
+            });
+        }
+    } catch (e) {
+        console.warn('Erro ao verificar permissões de admin nas campanhas:', e);
+    }
+}
+
+/**
+ * Sincronização automática do token entre portas, verificação de admin e carregamento inicial
  */
 document.addEventListener("DOMContentLoaded", () => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -52,18 +82,21 @@ document.addEventListener("DOMContentLoaded", () => {
         window.history.replaceState({}, document.title, window.location.pathname);
     }
 
+    // Executa a verificação estrita de permissões de administrador
+    verificarPermissoesAdmin();
+
     const linksMenu = document.querySelectorAll('.nav-links a');
     linksMenu.forEach(link => {
         link.addEventListener('click', (e) => {
-            const token = localStorage.getItem('ludarium_token');
-            if (token) {
+            const token = localStorage.getItem('ludarium_token') || localStorage.getItem('access_token');
+            if (token && !link.getAttribute('href').includes('token=')) {
                 e.preventDefault();
                 try {
-                    const urlDestino = new URL(link.href);
+                    const urlDestino = new URL(link.href, window.location.origin);
                     urlDestino.searchParams.set('token', token);
                     window.location.href = urlDestino.toString();
                 } catch (err) {
-                    window.location.href = link.href;
+                    window.location.href = link.href + '?token=' + token;
                 }
             }
         });
@@ -73,14 +106,14 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 /**
- * Função para buscar e listar as campanhas
+ * Função para buscar e listar as campanhas usando caminho relativo
  */
 async function fetchCampaigns() {
     const listContainer = document.getElementById('campaigns-list');
     if (!listContainer) return;
 
     try {
-        const response = await fetch(`${SERVICO_DE_CAMPANHAS}/campanhas`);
+        const response = await fetch(`/campanhas`);
         if (!response.ok) throw new Error('Erro ao carregar campanhas');
         
         const campaigns = await response.json();
@@ -108,12 +141,12 @@ async function fetchCampaigns() {
         });
     } catch (error) {
         console.error(error);
-        listContainer.innerHTML = '<p class="loading" style="color: #ef4444;">Erro ao comunicar com a API. Certifique-se de que o microsserviço está ativo na porta 8003.</p>';
+        listContainer.innerHTML = '<p class="loading" style="color: #ef4444;">Erro ao comunicar com a API. Verifique a ligação ao serviço de campanhas.</p>';
     }
 }
 
 /**
- * Evento para criar nova campanha
+ * Evento para criar nova campanha usando caminho relativo
  */
 const campaignForm = document.getElementById('campaign-form');
 if (campaignForm) {
@@ -128,7 +161,7 @@ if (campaignForm) {
         const title = titleInput ? titleInput.value.trim() : '';
         const description = descInput ? descInput.value.trim() : '';
         const goal = parseFloat(goalInput ? goalInput.value : 2500) || 2500;
-        const token = localStorage.getItem('ludarium_token') || '';
+        const token = localStorage.getItem('ludarium_token') || localStorage.getItem('access_token') || '';
 
         if (!title || !description) {
             mostrarToast('Por favor, preencha o título e a descrição.', 'erro');
@@ -141,7 +174,7 @@ if (campaignForm) {
         }
 
         try {
-            const response = await fetch(`${SERVICO_DE_CAMPANHAS}/campanhas`, {
+            const response = await fetch(`/campanhas`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

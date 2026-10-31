@@ -5,17 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ludarium - Gestão de Campanhas</title>
     <link rel="stylesheet" href="style.css">
+    <style>
+        /* Estilo estrito para ocultar elementos exclusivos de admin por padrão */
+        .admin-only {
+            display: none !important;
+        }
+    </style>
 </head>
-<body>
+<body onload="verificarSessaoCampanhas()">
     <!-- Barra de Navegação Unificada -->
     <nav class="main-navbar">
         <div class="nav-container">
             <span class="nav-brand">Ludarium Hub</span>
             <ul class="nav-links">
-                <li><a href="http://127.0.0.1:8081/frontend/home.html">Projetos</a></li>
-                <li><a href="http://127.0.0.1:8002/frontend/community.html">Comunidade</a></li>
-                <li><a href="http://127.0.0.1:8003/frontend/campanhas.html" class="active">Campanhas</a></li>
-                <li><a href="http://127.0.0.1:8004/frontend/perfil.html">Perfil</a></li>
+                <li><a href="/home-ui/home.html">Projetos</a></li>
+                <li><a href="/comunidade-ui/community.html">Comunidade</a></li>
+                <li><a href="/campanhas-ui/campanhas.html" class="active">Campanhas</a></li>
+                <li><a href="/perfil-ui/perfil.html">Perfil</a></li>
+                <li id="admin-menu-item" class="admin-only">
+                    <a href="/admin-ui/admin.html" style="color: #f59e0b; font-weight: bold;">⚙️ Painel Admin</a>
+                </li>
             </ul>
         </div>
     </nav>
@@ -39,8 +48,8 @@
                     <textarea id="description" required placeholder="Detalhes da campanha..."></textarea>
                 </div>
                 <div class="form-group">
-                    <label for="goal">Meta (R$ / Pontos):</label>
-                    <input type="number" id="goal" required placeholder="Ex: 5000">
+                    <label for="goal">Meta (Recompensa XP / Pontos):</label>
+                    <input type="number" id="goal" required placeholder="Ex: 2500">
                 </div>
                 <button type="submit" class="btn">Criar Campanha</button>
             </form>
@@ -54,6 +63,58 @@
             </div>
         </section>
     </div>
+
+    <!-- Script de Gestão de Links e Passagem de Token Integrada -->
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            const linksMenu = document.querySelectorAll('.nav-links a');
+            linksMenu.forEach(link => {
+                link.addEventListener('click', (e) => {
+                    const token = localStorage.getItem('ludarium_token') || localStorage.getItem('access_token');
+                    if (token && !link.getAttribute('href').includes('token=')) {
+                        e.preventDefault();
+                        try {
+                            const urlDestino = new URL(link.href, window.location.origin);
+                            urlDestino.searchParams.set('token', token);
+                            window.location.href = urlDestino.toString();
+                        } catch (err) {
+                            window.location.href = link.href + '?token=' + token;
+                        }
+                    }
+                });
+            });
+        });
+
+        async function verificarSessaoCampanhas() {
+            const token = localStorage.getItem('ludarium_token') || localStorage.getItem('access_token');
+            if (!token) return;
+
+            try {
+                const response = await fetch(`/me`, {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                if (!response.ok) return;
+                const user = await response.json();
+
+                const isAdmin = (user.username === 'admin' || user.email === 'admin@ludarium.com' || user.is_admin === true);
+                const elementosAdmin = document.querySelectorAll('.admin-only');
+
+                if (isAdmin) {
+                    elementosAdmin.forEach(el => {
+                        el.classList.remove('admin-only');
+                        el.style.display = 'block';
+                    });
+                } else {
+                    elementosAdmin.forEach(el => {
+                        el.classList.add('admin-only');
+                        el.style.display = 'none';
+                    });
+                }
+            } catch (e) {
+                console.warn('Erro ao verificar permissões de admin nas campanhas:', e);
+            }
+        }
+    </script>
 
     <script src="script.js"></script>
 </body>

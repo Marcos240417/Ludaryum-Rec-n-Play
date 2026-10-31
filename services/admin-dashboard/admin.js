@@ -1,14 +1,51 @@
 // ==========================================
-// LUDARIUM - PAINEL ADMINISTRATIVO (ADMIN.JS)
+// LUDARIUM - PAINEL ADMINISTRATIVO (ADMIN.JS COM DOSSIÊ FORENSE E CIBERSEGURANÇA)
+// Compatível com Localhost e Cloudflare Tunnel
 // ==========================================
 
 let selectedUserId = null;
 let selectedUserEmail = null;
 let selectedProjectId = null;
 
-// Obter token JWT armazenado
+// Obter token JWT armazenado de forma flexível
 function obterTokenAdmin() {
-    return localStorage.getItem('ludarium_token') || localStorage.getItem('access_token') || '';
+    return localStorage.getItem('ludarium_token') || localStorage.getItem('access_token') || localStorage.getItem('token') || '';
+}
+
+// VALIDAÇÃO DE SEGURANÇA: Bloqueia utilizadores comuns e restringe estritamente a admins
+async function verificarSessaoAdmin() {
+    const token = obterTokenAdmin();
+    if (!token) {
+        alert("Sessão não encontrada. Faça login para continuar.");
+        window.location.href = '../home-ui/login.html';
+        return;
+    }
+
+    try {
+        const response = await fetch('/me', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (!response.ok) throw new Error('Sessão inválida ou expirada.');
+        
+        const user = await response.json();
+        const isAdmin = (user.username === 'admin' || user.email === 'admin@ludarium.com' || user.is_admin === true);
+        
+        if (!isAdmin) {
+            alert('Acesso negado: esta área é restrita exclusivamente a administradores.');
+            window.location.href = '../home-ui/home.html';
+            return;
+        }
+
+        // Se for admin, prossegue com o carregamento normal do painel
+        pingServices();
+        loadOverviewCounts();
+        fetchUsers();
+    } catch (e) {
+        console.error('Erro de autenticação de admin:', e);
+        alert('Sessão inválida. Por favor, faça login novamente.');
+        window.location.href = '../home-ui/login.html';
+    }
 }
 
 // Navegação entre abas
@@ -65,7 +102,7 @@ async function pingServices() {
         
         try {
             const start = performance.now();
-            await fetch(`http://127.0.0.1:${s.port}/docs`, { method: 'HEAD', mode: 'no-cors' });
+            await fetch(`/docs`, { method: 'HEAD', mode: 'no-cors' });
             const end = performance.now();
             latency = Math.round(end - start) || latency;
             results += `[ONLINE] ${s.name} (Porta ${s.port}) - ${latency}ms\n`;
@@ -94,42 +131,44 @@ async function pingServices() {
     if (grid) grid.innerHTML = cardsHtml;
 }
 
-// Carregar contadores passando pelo API Gateway (Porta 8005)
+// Carregar contadores passando pelas rotas relativas
 async function loadOverviewCounts() {
     const elUsers = document.getElementById('stat-users');
     const elProjects = document.getElementById('stat-projects');
     const elCampaigns = document.getElementById('stat-campaigns');
 
-    if (elUsers) elUsers.innerText = '2';
-    if (elProjects) elProjects.innerText = '2';
-    if (elCampaigns) elCampaigns.innerText = '1';
-
     const token = obterTokenAdmin();
     const headers = { 'Authorization': `Bearer ${token}` };
 
     try {
-        const resUsers = await fetch('http://127.0.0.1:8005/users', { headers });
+        const resUsers = await fetch('/users', { headers });
         if (resUsers.ok) {
             const users = await resUsers.json();
             if (elUsers) elUsers.innerText = users.length;
         }
-    } catch (e) {}
+    } catch (e) {
+        if (elUsers) elUsers.innerText = '2';
+    }
 
     try {
-        const resProj = await fetch('http://127.0.0.1:8081/projects', { headers });
+        const resProj = await fetch('/projects', { headers });
         if (resProj.ok) {
             const projects = await resProj.json();
             if (elProjects) elProjects.innerText = projects.length;
         }
-    } catch (e) {}
+    } catch (e) {
+        if (elProjects) elProjects.innerText = '2';
+    }
 
     try {
-        const resCamp = await fetch('http://127.0.0.1:8003/campanhas', { headers });
+        const resCamp = await fetch('/campanhas', { headers });
         if (resCamp.ok) {
             const campaigns = await resCamp.json();
             if (elCampaigns) elCampaigns.innerText = campaigns.length;
         }
-    } catch (e) {}
+    } catch (e) {
+        if (elCampaigns) elCampaigns.innerText = '1';
+    }
 }
 
 // Abrir Modal de Gestão de Utilizador
@@ -145,18 +184,18 @@ function closeUserModal() {
     document.getElementById('user-modal').style.display = 'none';
 }
 
-// Buscar Utilizadores REAIS através do API Gateway (Porta 8005)
+// Buscar Utilizadores REAIS através de rotas relativas
 async function fetchUsers() {
     const tbodyActive = document.getElementById('users-table-body');
     const tbodySuspended = document.getElementById('suspended-users-table-body');
     if (!tbodyActive || !tbodySuspended) return;
     
-    tbodyActive.innerHTML = `<tr><td colspan="4">A consultar base de dados através do Gateway...</td></tr>`;
-    tbodySuspended.innerHTML = `<tr><td colspan="4">A consultar base de dados através do Gateway...</td></tr>`;
+    tbodyActive.innerHTML = `<tr><td colspan="4">A consultar base de dados...</td></tr>`;
+    tbodySuspended.innerHTML = `<tr><td colspan="4">A consultar base de dados...</td></tr>`;
     
     const token = obterTokenAdmin();
     try {
-        const response = await fetch('http://127.0.0.1:8005/users', {
+        const response = await fetch('/users', {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         if (!response.ok) throw new Error("Erro ao buscar utilizadores");
@@ -214,25 +253,22 @@ async function fetchUsers() {
     } catch (e) {
         tbodyActive.innerHTML = `
             <tr><td>1</td><td>admin@ludarium.com</td><td><span style="color:var(--success)">Ativo (PostgreSQL)</span></td><td><button onclick="openUserModal(1, 'admin@ludarium.com')" style="padding:0.3rem 0.8rem; font-size:0.8rem">Gerir</button></td></tr>
-            <tr><td>2</td><td>user1@ludarium.com</td><td><span style="color:var(--success)">Ativo (PostgreSQL)</span></td><td><button onclick="openUserModal(2, 'user1@ludarium.com')" style="padding:0.3rem 0.8rem; font-size:0.8rem">Gerir</button></td></tr>
         `;
         tbodySuspended.innerHTML = `<tr><td colspan="4">Nenhum utilizador suspenso no momento.</td></tr>`;
-        const statUsers = document.getElementById('stat-users');
-        if (statUsers) statUsers.innerText = '2';
     }
 }
 
-// Ações de Gestão de Utilizadores via Gateway
+// Ações de Gestão de Utilizadores
 async function deleteUser() {
-    if (!confirm(`Tem certeza que deseja excluir permanentemente o utilizador ID ${selectedUserId}?`)) return;
+    if (!confirm(`Tem certeza que deseja excluir permanentemente o utilizador ID ${selectedUserId}? Todos os dados associados (logs de auditoria, mensagens e sessões) serão limpos instantaneamente.`)) return;
     const token = obterTokenAdmin();
     try {
-        const res = await fetch(`http://127.0.0.1:8005/users/${selectedUserId}`, {
+        const res = await fetch(`/users/${selectedUserId}`, {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) {
-            alert("Utilizador excluído com sucesso e sessão invalidada de imediato!");
+            alert("Utilizador excluído com sucesso e dados associados removidos!");
             closeUserModal();
             fetchUsers();
             loadOverviewCounts();
@@ -240,7 +276,7 @@ async function deleteUser() {
             alert("Erro ao excluir utilizador. Verifique permissões.");
         }
     } catch (e) {
-        alert("Erro de ligação ao API Gateway.");
+        alert("Erro de ligação ao servidor.");
     }
 }
 
@@ -248,7 +284,7 @@ async function suspendUser(days) {
     if (!confirm(`Deseja suspender o utilizador por ${days} dias?`)) return;
     const token = obterTokenAdmin();
     try {
-        const res = await fetch(`http://127.0.0.1:8005/users/${selectedUserId}/status`, {
+        const res = await fetch(`/users/${selectedUserId}/status`, {
             method: 'PATCH',
             headers: { 
                 'Content-Type': 'application/json',
@@ -271,7 +307,7 @@ async function suspendUser(days) {
 async function unsuspendUser() {
     const token = obterTokenAdmin();
     try {
-        const res = await fetch(`http://127.0.0.1:8005/users/${selectedUserId}/status`, {
+        const res = await fetch(`/users/${selectedUserId}/status`, {
             method: 'PATCH',
             headers: { 
                 'Content-Type': 'application/json',
@@ -295,7 +331,7 @@ async function liberarSuspensaoDireta(userId) {
     if (!confirm("Deseja liberar este utilizador da suspensão imediatamente?")) return;
     const token = obterTokenAdmin();
     try {
-        const res = await fetch(`http://127.0.0.1:8005/users/${userId}/status`, {
+        const res = await fetch(`/users/${userId}/status`, {
             method: 'PATCH',
             headers: { 
                 'Content-Type': 'application/json',
@@ -323,7 +359,7 @@ async function sendAdminMessage() {
     }
     const token = obterTokenAdmin();
     try {
-        const res = await fetch(`http://127.0.0.1:8005/messages/send-admin-message`, {
+        const res = await fetch(`/messages/send-admin-message`, {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json',
@@ -343,12 +379,12 @@ async function sendAdminMessage() {
     }
 }
 
-// Abrir Modal de Inspeção de Projetos e Exibir Resposta de Correção
+// Abrir Modal de Inspeção de Projetos
 async function inspectProject(id) {
     selectedProjectId = id;
     const token = obterTokenAdmin();
     try {
-        const response = await fetch(`http://127.0.0.1:8081/projects/${id}`, {
+        const response = await fetch(`/projects/${id}`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         if (!response.ok) throw new Error("Erro ao buscar detalhes do projeto");
@@ -393,7 +429,7 @@ function closeProjectModal() {
     document.getElementById('project-modal').style.display = 'none';
 }
 
-// Submeter Inspeção de Projeto e Notificar Utilizador
+// Submeter Inspeção de Projeto
 async function submitProjectInspection(event) {
     if (event) event.preventDefault();
 
@@ -405,13 +441,13 @@ async function submitProjectInspection(event) {
     const autoriaInfo = authorsEl ? authorsEl.innerText : "Responsável";
 
     if (!message.trim()) {
-        alert("Por favor, descreva detalhadamente o erro relatado para que os responsáveis consigam visualizar e corrigir.");
+        alert("Por favor, descreva detalhadamente o erro relatado.");
         return;
     }
 
     const token = obterTokenAdmin();
     try {
-        await fetch(`http://127.0.0.1:8081/projects/${selectedProjectId}/inspect`, {
+        await fetch(`/projects/${selectedProjectId}/inspect`, {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json',
@@ -425,7 +461,7 @@ async function submitProjectInspection(event) {
             })
         });
 
-        const projRes = await fetch(`http://127.0.0.1:8081/projects/${selectedProjectId}`, {
+        const projRes = await fetch(`/projects/${selectedProjectId}`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         
@@ -435,7 +471,7 @@ async function submitProjectInspection(event) {
             const tituloProj = projData.title || projData.name || `Projeto #${selectedProjectId}`;
             
             if (destinatario) {
-                await fetch(`http://127.0.0.1:8005/messages/send-admin-message`, {
+                await fetch(`/messages/send-admin-message`, {
                     method: 'POST',
                     headers: { 
                         'Content-Type': 'application/json',
@@ -465,7 +501,7 @@ async function aprovarProjetoAdmin() {
     
     const token = obterTokenAdmin();
     try {
-        const res = await fetch(`http://127.0.0.1:8081/projects/${selectedProjectId}/aprovar`, {
+        const res = await fetch(`/projects/${selectedProjectId}/aprovar`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -489,7 +525,7 @@ async function reprovarProjetoAdmin() {
 
     const token = obterTokenAdmin();
     try {
-        const res = await fetch(`http://127.0.0.1:8081/projects/${selectedProjectId}/reprovar`, {
+        const res = await fetch(`/projects/${selectedProjectId}/reprovar`, {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json',
@@ -524,7 +560,7 @@ async function deleteProjectFromModal() {
     
     const token = obterTokenAdmin();
     try {
-        await fetch(`http://127.0.0.1:8081/projects/${selectedProjectId}`, {
+        await fetch(`/projects/${selectedProjectId}`, {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -541,12 +577,12 @@ async function fetchProjects() {
     const tbodyInspection = document.getElementById('inspection-projects-table-body');
     if (!tbodyActive || !tbodyInspection) return;
 
-    tbodyActive.innerHTML = `<tr><td colspan="5" style="padding: 15px; text-align: center;">A consultar base de dados do Project Service...</td></tr>`;
+    tbodyActive.innerHTML = `<tr><td colspan="5" style="padding: 15px; text-align: center;">A consultar base de dados...</td></tr>`;
     tbodyInspection.innerHTML = `<tr><td colspan="5" style="padding: 15px; text-align: center;">A consultar base de dados...</td></tr>`;
 
     const token = obterTokenAdmin();
     try {
-        const response = await fetch('http://127.0.0.1:8081/projects', {
+        const response = await fetch('/projects', {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         if (!response.ok) throw new Error("Erro ao buscar projetos");
@@ -605,11 +641,11 @@ async function carregarDenunciasAdmin() {
     const container = document.getElementById('lista-denuncias-admin');
     if (!container) return;
 
-    container.innerHTML = `<p style="color: var(--text-muted); text-align: center; padding: 1rem;">A consultar denúncias no Gateway...</p>`;
+    container.innerHTML = `<p style="color: var(--text-muted); text-align: center; padding: 1rem;">A consultar denúncias...</p>`;
     const token = obterTokenAdmin();
 
     try {
-        const response = await fetch('http://127.0.0.1:8005/admin/foruns/denuncias', {
+        const response = await fetch('/admin/foruns/denuncias', {
             headers: { 'Authorization': `Bearer ${token}` }
         });
 
@@ -698,7 +734,7 @@ async function ignorarDenuncia(denunciaId) {
 
     const token = obterTokenAdmin();
     try {
-        const res = await fetch(`http://127.0.0.1:8002/admin/foruns/denuncias/${denunciaId}/ignorar`, {
+        const res = await fetch(`/admin/foruns/denuncias/${denunciaId}/ignorar`, {
             method: 'DELETE',
             headers: { 
                 'Authorization': `Bearer ${token}`,
@@ -740,7 +776,7 @@ async function suspenderForumPorDenuncia(forumId, denunciaId) {
 
     const token = obterTokenAdmin();
     try {
-        const res = await fetch(`http://127.0.0.1:8002/admin/foruns/${forumId}/suspender`, {
+        const res = await fetch(`/admin/foruns/${forumId}/suspender`, {
             method: 'PATCH',
             headers: { 
                 'Authorization': `Bearer ${token}`,
@@ -755,8 +791,7 @@ async function suspenderForumPorDenuncia(forumId, denunciaId) {
 
         if (!res.ok) throw new Error('Falha ao suspender o fórum.');
 
-        // NOTA: A denúncia AGORA PERMANECE visível no painel admin (remoção da chamada DELETE da denúncia)
-        alert(`Fórum suspenso por ${horas} hora(s) com sucesso! A denúncia permanece visível no painel para registo.`);
+        alert(`Fórum suspenso por ${horas} hora(s) com sucesso!`);
         carregarDenunciasAdmin();
     } catch (e) {
         alert('Erro: ' + e.message);
@@ -764,11 +799,11 @@ async function suspenderForumPorDenuncia(forumId, denunciaId) {
 }
 
 async function apagarForumPorDenuncia(forumId, denunciaId) {
-    if (!confirm('Tem a certeza absoluta de que deseja apagar este fórum permanentemente? Esta ação não pode ser desfeita.')) return;
+    if (!confirm('Tem a certeza absoluta de que deseja apagar este fórum permanentemente?')) return;
     
     const token = obterTokenAdmin();
     try {
-        const res = await fetch(`http://127.0.0.1:8002/foruns/${forumId}`, {
+        const res = await fetch(`/foruns/${forumId}`, {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -778,7 +813,7 @@ async function apagarForumPorDenuncia(forumId, denunciaId) {
             throw new Error(errData.detail || 'Falha ao apagar o fórum.');
         }
 
-        await fetch(`http://127.0.0.1:8002/admin/foruns/denuncias/${denunciaId}/ignorar`, {
+        await fetch(`/admin/foruns/denuncias/${denunciaId}/ignorar`, {
             method: 'DELETE',
             headers: { 
                 'Authorization': `Bearer ${token}`,
@@ -797,17 +832,49 @@ async function apagarForumPorDenuncia(forumId, denunciaId) {
     }
 }
 
-// Gerar e exportar o Relatório Dossiê Oficial em Formato PDF de Leitura
-function exportDossierReport() {
-    const usersCount = document.getElementById('stat-users')?.innerText || '2';
-    const projectsCount = document.getElementById('stat-projects')?.innerText || '2';
-    const campaignsCount = document.getElementById('stat-campaigns')?.innerText || '1';
-    const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
+// --- MÓDULO DE DOSSIÊ FORENSE E CIBERSEGURANÇA ---
 
+async function exportDossierReport() {
+    const token = obterTokenAdmin();
+    try {
+        const res = await fetch('/admin/dossie-completo', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!res.ok) throw new Error("Falha ao obter o dossiê de cibersegurança.");
+        const dadosDossie = await res.json();
+
+        gerarJanelaRelatorioDossie(dadosDossie);
+    } catch (e) {
+        alert("Erro ao gerar relatório forense: " + e.message);
+    }
+}
+
+function gerarJanelaRelatorioDossie(dados) {
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
-        alert("O bloqueador de pop-ups impediu a abertura do relatório PDF. Permita pop-ups para este site.");
+        alert("O bloqueador de pop-ups impediu a abertura do relatório. Permita pop-ups para este site.");
         return;
+    }
+
+    const meta = dados.metadados_relatorio || {};
+    const resumo = dados.resumo_executivo || {};
+    const logs = dados.forense_telemetria_acessos || [];
+
+    let logsRowsHtml = logs.map(l => `
+        <tr>
+            <td>${l.timestamp ? new Date(l.timestamp).toLocaleString() : 'N/A'}</td>
+            <td><strong>${l.username}</strong></td>
+            <td><code>${l.ip_address || 'N/A'}</code></td>
+            <td>${l.dispositivo || 'N/A'}</td>
+            <td>${l.sistema_operacional || 'N/A'}</td>
+            <td>${l.navegador || 'N/A'}</td>
+            <td>${l.localizacao || 'N/A'}</td>
+        </tr>
+    `).join('');
+
+    if (logs.length === 0) {
+        logsRowsHtml = `<tr><td colspan="7" style="text-align: center; color: #64748b;">Nenhum registo de telemetria encontrado.</td></tr>`;
     }
 
     printWindow.document.write(`
@@ -815,111 +882,60 @@ function exportDossierReport() {
         <html lang="pt">
         <head>
             <meta charset="UTF-8">
-            <title>Dossiê Oficial - Ludarium Backend</title>
+            <title>Dossiê Oficial de Cibersegurança - Ludarium</title>
             <style>
-                body { 
-                    font-family: 'Segoe UI', Arial, sans-serif; 
-                    color: #1e293b; 
-                    padding: 40px; 
-                    background-color: #ffffff;
-                }
-                h1 { 
-                    color: #2563eb; 
-                    border-bottom: 2px solid #e2e8f0; 
-                    padding-bottom: 12px; 
-                    font-size: 24px;
-                }
-                .meta { 
-                    margin-bottom: 30px; 
-                    color: #64748b; 
-                    font-size: 0.95rem; 
-                    background: #f8fafc;
-                    padding: 15px;
-                    border-radius: 6px;
-                    border: 1px solid #e2e8f0;
-                }
-                .section { 
-                    margin-bottom: 25px; 
-                }
-                .section h3 {
-                    color: #0f172a;
-                    font-size: 1.1rem;
-                    margin-bottom: 10px;
-                }
-                table { 
-                    width: 100%; 
-                    border-collapse: collapse; 
-                    margin-top: 5px; 
-                }
-                th, td { 
-                    padding: 12px; 
-                    border-bottom: 1px solid #cbd5e1; 
-                    text-align: left; 
-                    font-size: 0.95rem; 
-                }
-                th { 
-                    background: #f1f5f9; 
-                    color: #334155; 
-                    text-transform: uppercase;
-                    font-size: 0.8rem;
-                    letter-spacing: 0.05em;
-                }
-                .badge-online {
-                    color: #16a34a; 
-                    font-weight: bold;
-                }
-                .footer { 
-                    margin-top: 50px; 
-                    text-align: center; 
-                    font-size: 0.8rem; 
-                    color: #94a3b8; 
-                    border-top: 1px solid #e2e8f0; 
-                    padding-top: 15px; 
-                }
-                @media print {
-                    body { padding: 0; }
-                }
+                body { font-family: 'Segoe UI', Arial, sans-serif; color: #1e293b; padding: 40px; background-color: #ffffff; }
+                h1 { color: #2563eb; border-bottom: 2px solid #e2e8f0; padding-bottom: 12px; font-size: 24px; }
+                .meta { margin-bottom: 25px; color: #475569; font-size: 0.9rem; background: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid #e2e8f0; }
+                .section { margin-bottom: 30px; }
+                .section h3 { color: #0f172a; font-size: 1.15rem; margin-bottom: 10px; border-left: 4px solid #2563eb; padding-left: 8px; }
+                table { width: 100%; border-collapse: collapse; margin-top: 5px; }
+                th, td { padding: 10px 12px; border-bottom: 1px solid #cbd5e1; text-align: left; font-size: 0.85rem; }
+                th { background: #f1f5f9; color: #334155; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em; }
+                code { font-family: monospace; background: #e2e8f0; padding: 2px 4px; border-radius: 4px; }
+                .footer { margin-top: 40px; text-align: center; font-size: 0.75rem; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 15px; }
             </style>
         </head>
         <body>
-            <h1>🎮 Ecossistema Ludarium - Relatório Dossiê Operacional</h1>
+            <h1>🛡️ Dossiê de Auditoria e Cibersegurança - Ludarium</h1>
             <div class="meta">
-                <p><strong>Data de Emissão:</strong> ${timestamp}</p>
-                <p><strong>Ambiente de Execução:</strong> Windows Native (PowerShell / Uvicorn ASGI)</p>
-                <p><strong>Arquitetura:</strong> Microsserviços Independentes com PostgreSQL</p>
+                <p><strong>Gerado em:</strong> ${meta.gerado_em || 'N/A'}</p>
+                <p><strong>Sistema:</strong> ${meta.sistema || 'Ludarium Enterprise Security Suite'}</p>
+                <p><strong>Nível de Sigilo:</strong> <span style="color: #dc2626; font-weight: bold;">${meta.nivel_sigilo || 'Confidencial'}</span></p>
             </div>
 
             <div class="section">
-                <h3>📊 Métricas Atuais do Ecossistema</h3>
+                <h3>📊 Resumo Executivo</h3>
                 <table>
-                    <tr><th>Indicador Operacional</th><th>Valor Registado na BD</th></tr>
-                    <tr><td>Utilizadores Registados (Auth Service)</td><td><strong>${usersCount}</strong></td></tr>
-                    <tr><td>Projetos Ativos (Project Service)</td><td><strong>${projectsCount}</strong></td></tr>
-                    <tr><td>Campanhas & XP Ativas (Campaigns Service)</td><td><strong>${campaignsCount}</strong></td></tr>
+                    <tr><th>Métrica de Auditoria</th><th>Valor Registado</th></tr>
+                    <tr><td>Total de Utilizadores Registados</td><td><strong>${resumo.total_utilizadores_registados || 0}</strong></td></tr>
+                    <tr><td>Total de Registos Forenses (Acessos)</td><td><strong>${resumo.total_logs_forenses_registados || 0}</strong></td></tr>
+                    <tr><td>Estado Geral do Sistema</td><td><span style="color: #16a34a; font-weight: bold;">${resumo.status_sistema || 'Operacional'}</span></td></tr>
                 </table>
             </div>
 
             <div class="section">
-                <h3>🌐 Estado da Rede de Microsserviços</h3>
+                <h3>🛰️ Telemetria Forense e Logs de Acesso Recentes (IP, Dispositivo e Navegador)</h3>
                 <table>
-                    <tr><th>Microsserviço</th><th>Porta Local</th><th>Estado de Conectividade</th></tr>
-                    <tr><td>Auth Service</td><td>8001</td><td><span class="badge-online">ONLINE</span></td></tr>
-                    <tr><td>Community Service</td><td>8002</td><td><span class="badge-online">ONLINE</span></td></tr>
-                    <tr><td>Campaigns Service</td><td>8003</td><td><span class="badge-online">ONLINE</span></td></tr>
-                    <tr><td>Profile Service</td><td>8004</td><td><span class="badge-online">ONLINE</span></td></tr>
-                    <tr><td>API Gateway</td><td>8005</td><td><span class="badge-online">ONLINE</span></td></tr>
-                    <tr><td>Project Service</td><td>8081</td><td><span class="badge-online">ONLINE</span></td></tr>
+                    <tr>
+                        <th>Data / Hora (UTC)</th>
+                        <th>Utilizador</th>
+                        <th>Endereço IP</th>
+                        <th>Dispositivo</th>
+                        <th>Sistema Operacional</th>
+                        <th>Navegador</th>
+                        <th>Localização</th>
+                    </tr>
+                    ${logsRowsHtml}
                 </table>
             </div>
 
             <div class="footer">
-                <p>Ludarium Platform - Documento oficial gerado automaticamente pelo Back-Office para fins de demonstração.</p>
+                <p>Relatório oficial gerado automaticamente para fins de auditoria de cibersegurança e conformidade técnica.</p>
             </div>
 
             <script>
-                window.onload = function() {
-                    window.print();
-                }
+                window.onload = function() { window.print(); }
             </script>
         </body>
         </html>
@@ -927,25 +943,23 @@ function exportDossierReport() {
     printWindow.document.close();
 }
 
-// Voltar para a página principal preservando o token JWT
+// Voltar para a página principal preservando o token JWT dinamicamente
 function voltarHome() {
-    const urlParams = new URLSearchParams(window.location.search);
-    const token = urlParams.get('token') || obterTokenAdmin();
-    window.location.href = `http://127.0.0.1:8081/frontend/home.html${token ? '?token=' + token : ''}`;
+    const token = obterTokenAdmin();
+    window.location.href = `../home-ui/home.html${token ? '?token=' + token : ''}`;
 }
 
-// Terminar sessão e redirecionar para o login
+// Terminar sessão e redirecionar mantendo compatibilidade com Cloudflare/Localhost
 function sairSessao() {
     if (confirm("Tem a certeza de que deseja sair da sessão administrativa?")) {
         localStorage.removeItem('ludarium_token');
         localStorage.removeItem('access_token');
-        window.location.href = `http://127.0.0.1:8081/frontend/login.html`;
+        localStorage.removeItem('token');
+        window.location.href = `../home-ui/login.html`;
     }
 }
 
-// Inicialização automática ao carregar a página
+// Inicialização segura estrita: Executa a validação do Admin ao carregar o script
 window.onload = function() {
-    pingServices();
-    loadOverviewCounts();
-    fetchUsers();
+    verificarSessaoAdmin();
 };

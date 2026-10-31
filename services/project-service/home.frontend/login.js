@@ -1,14 +1,7 @@
 // ==========================================
-// LUDARIUM - SCRIPT DE AUTENTICAÇÃO E LOGIN
+// LUDARIUM - SCRIPT DE AUTENTICAÇÃO E LOGIN (AUTH.JS)
+// Compatível com Localhost e Cloudflare Tunnel
 // ==========================================
-
-const AUTH_SERVICE_URL = "http://localhost:8001";
-const PROJECT_SERVICE_URL = "http://localhost:8081";
-const SERVICO_DE_COMUNIDADE_URL = "http://localhost:8002";
-const SERVICO_DE_CAMPANHAS_URL = "http://localhost:8003";
-const SERVICO_DE_CAMPANHAS = SERVICO_DE_CAMPANHAS_URL;
-const SERVICO_DE_PERFIL_URL = "http://localhost:8004";
-const GATEWAY_URL = "http://localhost:8005";
 
 // Variável de controlo para alternar entre ecrã de Login e Registo
 let modoRegistoAtivo = false;
@@ -164,7 +157,7 @@ async function fazerRegisto() {
     definirBotaoCarregamento(btn, true, 'CRIAR CONTA →');
 
     try {
-        const response = await fetch(`${GATEWAY_URL}/register`, {
+        const response = await fetch(`/register`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ username: username, email: email, password: pass })
@@ -182,10 +175,9 @@ async function fazerRegisto() {
 
         mostrarToast('Conta criada com sucesso! Faça login para continuar.', 'sucesso');
         
-        // CORREÇÃO APLICADA: Retorna para o modo de login e preenche o campo de utilizador/email automaticamente
         alternarModoAuth({ preventDefault: () => {} });
         if (emailInput) emailInput.value = email;
-        if (passInput) passInput.value = ''; // Limpa a senha por segurança
+        if (passInput) passInput.value = '';
         
     } catch (error) {
         console.warn('Erro no registo: ' + error.message);
@@ -235,7 +227,7 @@ function exibirSugestoesUtilizador(nomeTentado) {
 }
 
 /**
- * Realiza o login e redireciona para a home enviando o token na URL (evitando o ciclo de logout)
+ * Realiza o login e redireciona para a home usando o caminho relativo correto compatível com o Gateway
  */
 async function fazerLogin() {
     const userInput = document.getElementById('loginUser');
@@ -253,7 +245,7 @@ async function fazerLogin() {
     definirBotaoCarregamento(btn, true, 'ENTRAR NA LUDARIUM →');
 
     try {
-        const response = await fetch(`${GATEWAY_URL}/login`, {
+        const response = await fetch(`/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: new URLSearchParams({ username: user, password: pass })
@@ -265,13 +257,12 @@ async function fazerLogin() {
         const token = data.access_token || data.token;
         if (!token) throw new Error('Token não recebido do servidor.');
 
-        // 1. Guarda no localStorage da porta atual do Gateway/Auth
         localStorage.setItem('ludarium_token', token);
         mostrarToast('Login efetuado com sucesso! Redirecionando...', 'sucesso');
 
-        // 2. Redireciona para a home na porta 8081 passando o token explicitamente na query string
+        // Redirecionamento corrigido para a pasta home-ui garantindo compatibilidade com o Gateway
         setTimeout(() => {
-            window.location.href = `${PROJECT_SERVICE_URL}/frontend/home.html?token=${encodeURIComponent(token)}`;
+            window.location.href = `../home-ui/home.html?token=${encodeURIComponent(token)}`;
         }, 800);
     } catch (error) {
         mostrarToast('Erro no login: ' + error.message, 'erro');

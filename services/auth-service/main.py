@@ -1,14 +1,15 @@
 import os
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text, select
+from sqlalchemy import text, select, func
 import bcrypt
 from datetime import datetime, timedelta
 import math
 from jose import JWTError, jwt
+from user_agents import parse # pip install user-agents
 import models, database, schemas
 
 SECRET_KEY = "ludarium_super_secret_key_jwt"
@@ -27,7 +28,7 @@ async def lifespan(app: FastAPI):
         await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS suspended_until TIMESTAMP;"))
     yield
 
-app = FastAPI(title="Ludarium Auth Service", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="Ludarium Auth Service", version="1.1.0", lifespan=lifespan)
 
 # Configuração de CORS global e permissiva para comunicação entre microsserviços e painéis
 app.add_middleware(
@@ -79,7 +80,7 @@ async def obter_utilizador_atual(token: str = Depends(oauth2_scheme), db: AsyncS
 
 @app.get("/")
 def raiz():
-    return {"message": "Auth Service a funcionar corretamente!"}
+    return {"message": "Auth Service a funcionar com Telemetria e Dossiê de Cibersegurança!"}
 
 @app.post("/register", response_model=schemas.UserResponse, status_code=status.HTTP_201_CREATED)
 async def registar_utilizador(user: schemas.UserCreate, db: AsyncSession = Depends(database.get_db)):
@@ -99,7 +100,7 @@ async def registar_utilizador(user: schemas.UserCreate, db: AsyncSession = Depen
     return novo_utilizador
 
 @app.post("/login")
-async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(database.get_db)):
+async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(database.get_db)):
     result = await db.execute(
         select(models.User).where((models.User.username == form_data.username) | (models.User.email == form_data.username))
     )
@@ -118,10 +119,36 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
             detail=f"Conta suspensa. Faltam aproximadamente {dias} dia(s) e {horas} hora(s) para o término da suspensão."
         )
     elif suspended_dt and suspended_dt <= datetime.utcnow():
-        # Reativação automática caso o prazo já tenha expirado
         user.status = "Ativo (BD)"
         user.suspended_until = None
         await db.commit()
+
+    # --- RECOLHA DE TELEMETRIA E AUDITORIA FORENSE NO LOGIN ---
+    user_agent_string = request.headers.get("user-agent", "")
+    parsed_ua = parse(user_agent_string)
+    
+    ip_client = request.headers.get("x-forwarded-for") or (request.client.host if request.client else "127.0.0.1")
+    
+    tipo_disp = "Desktop"
+    if parsed_ua.is_mobile:
+        tipo_disp = "Telemóvel (Mobile)"
+    elif parsed_ua.is_tablet:
+        tipo_disp = "Tablet"
+
+    novo_log = models.AuditLog(
+        user_id=user.id,
+        username=user.username or user.email,
+        ip_address=ip_client,
+        user_agent=user_agent_string,
+        dispositivo=tipo_disp,
+        sistema_operacional=f"{parsed_ua.os.family} {parsed_ua.os.version_string}".strip(),
+        navegador=f"{parsed_ua.browser.family} {parsed_ua.browser.version_string}".strip(),
+        localizacao="Brasil / Local (Detectado por IP)",
+        acao="LOGIN_SUCESSO"
+    )
+    db.add(novo_log)
+    await db.commit()
+    # ----------------------------------------------------------
 
     access_token = criar_token_acesso(data={"sub": user.username})
     return {"access_token": access_token, "token_type": "bearer"}
@@ -135,7 +162,6 @@ async def obter_perfil_atual(current_user: models.User = Depends(obter_utilizado
 # ==========================================
 @app.get("/users/me/suspension-status")
 async def verificar_suspensao_propria(current_user: models.User = Depends(obter_utilizador_atual), db: AsyncSession = Depends(database.get_db)):
-    """Retorna se a conta autenticada está suspensa e o tempo exato restante"""
     suspended_dt = parse_datetime(current_user.suspended_until)
     if suspended_dt and suspended_dt > datetime.utcnow():
         restante = suspended_dt - datetime.utcnow()
@@ -154,11 +180,10 @@ async def verificar_suspensao_propria(current_user: models.User = Depends(obter_
     return {"suspenso": False, "mensagem": "Conta ativa."}
 
 # ==========================================
-# GESTÃO DE UTILIZADORES (PAINEL ADMIN)
+# GESTÃO DE UTILIZADORES E DOSSIÊ FORENSE (PAINEL ADMIN)
 # ==========================================
 @app.get("/users")
 async def listar_todos_utilizadores(db: AsyncSession = Depends(database.get_db)):
-    """Devolve a lista completa de utilizadores incluindo a data limite de suspensão."""
     result = await db.execute(select(models.User))
     users = result.scalars().all()
     resultado = []
@@ -182,7 +207,7 @@ async def listar_todos_utilizadores(db: AsyncSession = Depends(database.get_db))
 
 @app.delete("/users/{user_id}")
 async def excluir_utilizador_definitivamente(user_id: int, db: AsyncSession = Depends(database.get_db)):
-    """Exclui permanentemente um utilizador e invalida a sessão de imediato (Hard Delete)."""
+    """Exclui permanentemente o utilizador. Graças ao CASCADE, todos os logs de auditoria e dados associados são limpos de imediato para poupar memória."""
     result = await db.execute(select(models.User).where(models.User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
@@ -190,17 +215,47 @@ async def excluir_utilizador_definitivamente(user_id: int, db: AsyncSession = De
     
     await db.delete(user)
     await db.commit()
-    return {"message": "Utilizador e todos os seus dados removidos permanentemente com sucesso."}
+    return {"message": "Utilizador e todos os seus dados de auditoria associados foram removidos com sucesso, libertando memória."}
+
+@app.get("/admin/dossie-completo", response_model=schemas.DossieCibersegurancaResponse)
+async def exportar_dossie_ciberseguranca(db: AsyncSession = Depends(database.get_db)):
+    """Gera o Dossiê Completo de Cibersegurança e Auditoria Forense para apresentação no Painel Admin."""
+    
+    # 1. Métricas Executivas
+    total_users_res = await db.execute(select(func.count(models.User.id)))
+    total_utilizadores = total_users_res.scalar() or 0
+
+    # 2. Telemetria Forense (Últimos 200 acessos)
+    logs_res = await db.execute(select(models.AuditLog).order_by(models.AuditLog.timestamp.desc()).limit(200))
+    logs_acesso = logs_res.scalars().all()
+
+    dossie = {
+        "metadados_relatorio": {
+            "gerado_em": datetime.utcnow().strftime("%d/%m/%Y %H:%M:%S UTC"),
+            "sistema": "Ludarium Enterprise Security Suite",
+            "nivel_sigilo": "Confidencial - Administração"
+        },
+        "resumo_executivo": {
+            "total_utilizadores_registados": total_utilizadores,
+            "total_logs_forenses_registados": len(logs_acesso),
+            "status_sistema": "Operacional e Monitorizado"
+        },
+        "moderacao_foruns": [
+            {"aviso": "Moderação ativa em tempo real"}
+        ],
+        "forense_telemetria_acessos": logs_acesso
+    }
+
+    return dossie
 
 @app.patch("/users/{user_id}/status")
 async def alterar_status_utilizador(user_id: int, dados: dict, db: AsyncSession = Depends(database.get_db)):
-    """Suspende por período exato em dias ou remove a suspensão de um utilizador."""
     result = await db.execute(select(models.User).where(models.User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="Utilizador não encontrado.")
     
-    acao = dados.get("action")  # 'suspend' ou 'unsuspend'
+    acao = dados.get("action")
     if acao == "suspend":
         dias = int(dados.get("days", 7))
         user.suspended_until = datetime.utcnow() + timedelta(days=dias)

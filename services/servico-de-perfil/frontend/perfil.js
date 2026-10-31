@@ -1,9 +1,7 @@
-const AUTH_SERVICE_URL = "http://localhost:8001";
-const PROJECT_SERVICE_URL = "http://localhost:8081";
-const SERVICO_DE_COMUNIDADE_URL = "http://localhost:8002";
-const SERVICO_DE_CAMPANHAS_URL = "http://localhost:8003";
-const SERVICO_DE_PERFIL_URL = "http://localhost:8004";
-const GATEWAY_URL = "http://localhost:8005";
+// ==========================================
+// LUDARIUM - SCRIPT DE PERFIL E UTILIZADOR (PERFIL.JS)
+// Compatível com Localhost e Cloudflare Tunnel
+// ==========================================
 
 /**
  * Exibe uma notificação Toast flutuante elegante no canto inferior direito
@@ -32,41 +30,13 @@ function mostrarToast(mensagem, tipo = 'sucesso') {
     }, 3500);
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const tokenUrl = urlParams.get('token');
-    if (tokenUrl) {
-        localStorage.setItem('ludarium_token', tokenUrl);
-        window.history.replaceState({}, document.title, window.location.pathname);
-    }
-
-    document.querySelectorAll('.nav-links a').forEach(link => {
-        link.addEventListener('click', (e) => {
-            const token = localStorage.getItem('ludarium_token');
-            if (token) {
-                e.preventDefault();
-                try {
-                    const urlDestino = new URL(link.href);
-                    urlDestino.searchParams.set('token', token);
-                    window.location.href = urlDestino.toString();
-                } catch (err) {
-                    window.location.href = link.href;
-                }
-            }
-        });
-    });
-
-    fetchUserProfile();
-    carregarLeaderboard();
-});
-
 function obterToken() {
     const urlParams = new URLSearchParams(window.location.search);
     let token = urlParams.get('token');
     if (token) {
         localStorage.setItem('ludarium_token', token);
     } else {
-        token = localStorage.getItem('ludarium_token');
+        token = localStorage.getItem('ludarium_token') || localStorage.getItem('access_token');
     }
     
     if (!token) {
@@ -75,6 +45,70 @@ function obterToken() {
     }
     return token;
 }
+
+/**
+ * Verifica as permissões de administrador consultando o endpoint protegido `/me`
+ */
+async function verificarPermissoesAdmin() {
+    const token = obterToken();
+    if (!token) return;
+
+    try {
+        const response = await fetch(`/me`, {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (!response.ok) return;
+        const user = await response.json();
+
+        const isAdmin = (user.username === 'admin' || user.email === 'admin@ludarium.com' || user.is_admin === true);
+        const elementosAdmin = document.querySelectorAll('.admin-only');
+
+        if (isAdmin) {
+            elementosAdmin.forEach(el => {
+                el.classList.remove('admin-only');
+                el.style.display = 'block';
+            });
+        } else {
+            elementosAdmin.forEach(el => {
+                el.classList.add('admin-only');
+                el.style.display = 'none';
+            });
+        }
+    } catch (e) {
+        console.warn('Erro ao verificar permissões de admin no perfil:', e);
+    }
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const tokenUrl = urlParams.get('token');
+    if (tokenUrl) {
+        localStorage.setItem('ludarium_token', tokenUrl);
+        window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
+    // Executa a verificação estrita de permissões de administrador
+    verificarPermissoesAdmin();
+
+    document.querySelectorAll('.nav-links a').forEach(link => {
+        link.addEventListener('click', (e) => {
+            const token = localStorage.getItem('ludarium_token');
+            if (token && !link.getAttribute('href').includes('token=')) {
+                e.preventDefault();
+                try {
+                    const urlDestino = new URL(link.href, window.location.origin);
+                    urlDestino.searchParams.set('token', token);
+                    window.location.href = urlDestino.toString();
+                } catch (err) {
+                    window.location.href = link.href + '?token=' + token;
+                }
+            }
+        });
+    });
+
+    fetchUserProfile();
+    carregarLeaderboard();
+});
 
 function toggleEditForm() {
     const container = document.getElementById('edit-form-container');
@@ -128,7 +162,7 @@ if (updateForm) {
         }
 
         try {
-            const response = await fetch(`${SERVICO_DE_PERFIL_URL}/perfil/eu`, {
+            const response = await fetch(`/perfil/eu`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -169,7 +203,7 @@ async function deletarPerfil() {
 
     const token = localStorage.getItem('ludarium_token') || '';
     try {
-        const response = await fetch(`${SERVICO_DE_PERFIL_URL}/perfil/eu`, {
+        const response = await fetch(`/perfil/eu`, {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -183,7 +217,7 @@ async function deletarPerfil() {
 
         mostrarToast('Conta e dados eliminados com sucesso!');
         setTimeout(() => {
-            window.location.href = `${AUTH_SERVICE_URL}/frontend/login.html`;
+            window.location.href = `login.html`;
         }, 1500);
 
     } catch (error) {
@@ -203,7 +237,7 @@ async function fetchUserProfile() {
     if (!token) return;
 
     try {
-        const response = await fetch(`${SERVICO_DE_PERFIL_URL}/perfil/eu`, {
+        const response = await fetch(`/perfil/eu`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         if (!response.ok) throw new Error('Erro ao carregar perfil');
@@ -293,7 +327,7 @@ async function carregarLeaderboard() {
     if (!container) return;
 
     try {
-        const response = await fetch(`${SERVICO_DE_PERFIL_URL}/perfil/leaderboard`, {
+        const response = await fetch(`/perfil/leaderboard`, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${token}`

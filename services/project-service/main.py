@@ -16,7 +16,8 @@ import httpx
 SECRET_KEY = "ludarium_super_secret_key_jwt"
 ALGORITHM = "HS256"
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="http://localhost:8001/login")
+# Esquema flexível adaptável para ambiente local ou túnel Cloudflare
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login", auto_error=False)
 
 # 1. Instanciar a aplicação FastAPI primeiro
 app = FastAPI(title="Ludarium Project & Feed Service", version="1.0.0")
@@ -87,6 +88,8 @@ def obter_utilizador_atual(token: str = Depends(oauth2_scheme)):
         detail="Não foi possível validar as credenciais de autenticação",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    if not token:
+        raise credentials_exception
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub") or payload.get("email")
@@ -211,7 +214,7 @@ async def criar_projeto_root(
     poster: UploadFile | None = None,
     build_file: UploadFile | None = None,
     db: AsyncSession = Depends(database.get_db),
-    token: str | None = Depends(OAuth2PasswordBearer(tokenUrl="http://localhost:8001/login", auto_error=False))
+    token: str | None = Depends(oauth2_scheme)
 ):
     utilizador_email = "user1@user.com"
     if token:
@@ -502,7 +505,7 @@ async def adicionar_comentario_projeto(project_id: int, comentario: schemas.Come
         try:
             async with httpx.AsyncClient() as client:
                 await client.post(
-                    "http://localhost:8002/notifications",
+                    "/notifications",
                     params={
                         "destinatario_email": p.owner,
                         "conteudo": f"{utilizador_email.split('@')[0]} comentou no seu projeto '{p.title}'",
@@ -614,7 +617,7 @@ async def testar_projeto(
         try:
             async with httpx.AsyncClient() as client:
                 await client.post(
-                    "http://localhost:8005/perfil/adicionar-xp",
+                    "/perfil/adicionar-xp",
                     json={"xp": 75},
                     headers={"Authorization": authorization}
                 )

@@ -13,8 +13,8 @@ import httpx
 SECRET_KEY = "ludarium_super_secret_key_jwt"
 ALGORITHM = "HS256"
 
-# Ajustado o tokenUrl para apontar para o Auth Service real (porta 8001)
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="http://localhost:8001/login")
+# Esquema flexível adaptável para ambiente local ou túnel Cloudflare
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login", auto_error=False)
 
 app = FastAPI(title="Serviço de Campanhas e Desafios - Ludarium", version="1.0.0")
 
@@ -45,6 +45,8 @@ def obter_utilizador_atual(token: str = Depends(oauth2_scheme)):
         detail="Não foi possível validar as credenciais de autenticação",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    if not token:
+        raise credentials_exception
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub") or payload.get("email")
@@ -182,7 +184,6 @@ async def criar_campanha(
     db.add(nova_campanha)
     await db.commit()
     
-    # Recarrega a campanha com selectinload para evitar o erro MissingGreenlet na serialização dos objetivos
     result = await db.execute(
         select(models.CampanhaModel)
         .options(selectinload(models.CampanhaModel.objetivos))
@@ -213,7 +214,7 @@ async def concluir_objetivo(
         try:
             async with httpx.AsyncClient() as client:
                 await client.post(
-                    "http://localhost:8005/perfil/adicionar-xp",
+                    "/perfil/adicionar-xp",
                     json={"xp": 100},
                     headers={"Authorization": authorization}
                 )

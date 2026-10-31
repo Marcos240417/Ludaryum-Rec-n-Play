@@ -156,10 +156,9 @@ header p {
 .campaign-item {
     background: #fdfdfd;
     padding: 16px;
-    border-left: 4px solid #3498db;
     border-radius: 4px;
     border: 1px solid #eee;
-    border-left-width: 4px;
+    border-left: 4px solid #3498db;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 

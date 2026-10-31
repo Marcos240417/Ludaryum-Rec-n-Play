@@ -1,13 +1,19 @@
 // ==========================================
-// LUDARIUM - COMUNIDADE (COMMUNITY.JS COMPLETO)
+// LUDARIUM - COMUNIDADE (COMMUNITY.JS COMPLETO - COM WEBSOCKETS E POLLING EM TEMPO REAL)
 // ==========================================
-const AUTH_SERVICE_URL = "http://localhost:8001";
-const PROJECT_SERVICE_URL = "http://localhost:8081";
-const SERVICO_DE_COMUNIDADE_URL = "http://localhost:8002";
-const SERVICO_DE_CAMPANHAS_URL = "http://localhost:8003";
+
+// Deteção inteligente do ambiente (compatível com localhost e Cloudflare Tunnel)
+const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const PROTOCOL = window.location.protocol;
+const HOSTNAME = window.location.hostname;
+
+const AUTH_SERVICE_URL = isLocal ? "http://localhost:8001" : `${PROTOCOL}//${HOSTNAME}`;
+const PROJECT_SERVICE_URL = isLocal ? "http://localhost:8081" : `${PROTOCOL}//${HOSTNAME}`;
+const SERVICO_DE_COMUNIDADE_URL = isLocal ? "http://localhost:8002" : `${PROTOCOL}//${HOSTNAME}`;
+const SERVICO_DE_CAMPANHAS_URL = isLocal ? "http://localhost:8003" : `${PROTOCOL}//${HOSTNAME}`;
 const SERVICO_DE_CAMPANHAS = SERVICO_DE_CAMPANHAS_URL;
-const SERVICO_DE_PERFIL_URL = "http://localhost:8004";
-const GATEWAY_URL = "http://localhost:8005"; // API Gateway centralizador
+const SERVICO_DE_PERFIL_URL = isLocal ? "http://localhost:8004" : `${PROTOCOL}//${HOSTNAME}`;
+const GATEWAY_URL = isLocal ? "http://localhost:8005" : `${PROTOCOL}//${HOSTNAME}`;
 
 let listaPublicacoesGlobal = [];
 let listaForunsGlobal = [];
@@ -22,7 +28,115 @@ let forumIdParaDenunciar = null;
 let imagemBase64Evidencia = null;
 let temporizadorContagemRegressiva = null;
 let candidaturaChatAtualId = null;
-let grupoChatAtualId = null; // ID dedicado para chat de grupos/equipas
+let grupoChatAtualId = null; 
+
+// --- GESTÃO DE WEBSOCKETS E POLLING INTELIGENTE EM TEMPO REAL PARA CHATS AO VIVO ---
+let wsChatAtivo = null;
+let pollingChatInterval = null;
+
+function conectarWebSocketChat(endpointPath, idAlvo, callbackMensagemRecebida) {
+    if (wsChatAtivo) {
+        wsChatAtivo.close();
+        wsChatAtivo = null;
+    }
+    if (pollingChatInterval) {
+        clearInterval(pollingChatInterval);
+        pollingChatInterval = null;
+    }
+
+    const wsProtocol = PROTOCOL === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = isLocal 
+        ? `${wsProtocol}//localhost:8005${endpointPath}/${idAlvo}` 
+        : `${wsProtocol}//${HOSTNAME}${endpointPath}/${idAlvo}`;
+
+    wsChatAtivo = new WebSocket(wsUrl);
+
+    wsChatAtivo.onopen = () => {
+        console.log(`[WebSocket] Ligado com sucesso ao canal: ${endpointPath}/${idAlvo}`);
+    };
+
+    wsChatAtivo.onmessage = (event) => {
+        try {
+            const dados = JSON.parse(event.data);
+            if (typeof callbackMensagemRecebida === 'function') {
+                callbackMensagemRecebida(dados);
+            }
+        } catch (e) {
+            console.error("[WebSocket] Erro ao processar mensagem recebida:", e);
+        }
+    };
+
+    wsChatAtivo.onerror = (error) => {
+        console.warn("[WebSocket] Erro na ligação em tempo real (ativando polling de segurança):", error);
+        iniciarPollingSeguranca(endpointPath, idAlvo);
+    };
+
+    wsChatAtivo.onclose = () => {
+        console.log("[WebSocket] Ligação encerrada. Garantindo sincronização...");
+    };
+
+    // Polling inteligente simultâneo de segurança para evitar qualquer falha de proxy/F5
+    iniciarPollingSeguranca(endpointPath, idAlvo);
+}
+
+function iniciarPollingSeguranca(endpointPath, idAlvo) {
+    if (pollingChatInterval) clearInterval(pollingChatInterval);
+
+    pollingChatInterval = setInterval(async () => {
+        try {
+            const token = obterToken();
+            let urlFetch = '';
+            if (endpointPath.includes('/forum')) {
+                urlFetch = `${SERVICO_DE_COMUNIDADE_URL}/foruns/${idAlvo}/mensagens`;
+            } else if (endpointPath.includes('/candidatura')) {
+                urlFetch = `${SERVICO_DE_COMUNIDADE_URL}/candidaturas/${idAlvo}/mensagens`;
+            } else if (endpointPath.includes('/grupo')) {
+                urlFetch = `${SERVICO_DE_COMUNIDADE_URL}/grupos/${idAlvo}/mensagens`;
+            }
+
+            if (!urlFetch) return;
+
+            const res = await fetch(urlFetch, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const msgs = await res.json();
+                const meuNome = obterUtilizadorAtualNome();
+                
+                let containerId = 'forum-mensagens-container';
+                if (endpointPath.includes('/candidatura') || endpointPath.includes('/grupo')) {
+                    containerId = 'chat-wa-mensagens';
+                }
+
+                const container = document.getElementById(containerId);
+                if (container && Array.isArray(msgs)) {
+                    const scrollNoFundo = container.scrollHeight - container.scrollTop <= container.clientHeight + 80;
+                    container.innerHTML = '';
+                    if (msgs.length === 0) {
+                        container.innerHTML = '<p style="color: #94a3b8; text-align: center; padding: 1rem; font-size: 0.85rem;">Sem mensagens ainda.</p>';
+                    } else {
+                        msgs.forEach(m => adicionarMensagemNaTelaContainer(containerId, m, meuNome));
+                        if (scrollNoFundo) container.scrollTop = container.scrollHeight;
+                    }
+                }
+            }
+        } catch (err) {
+            // Silencia erros de fundo do polling
+        }
+    }, 2500); // Sincroniza automaticamente a cada 2.5 segundos sem piscar nem precisar de F5
+}
+
+function enviarMensagemWebSocket(conteudo, autor) {
+    if (wsChatAtivo && wsChatAtivo.readyState === WebSocket.OPEN) {
+        wsChatAtivo.send(JSON.stringify({
+            conteudo: conteudo,
+            autor: autor,
+            timestamp: new Date().toISOString()
+        }));
+        return true;
+    }
+    return false;
+}
 
 /**
  * Exibe uma notificação Toast flutuante elegante no canto inferior direito
@@ -59,15 +173,10 @@ function obterToken() {
     if (token) {
         localStorage.setItem('ludarium_token', token);
     } else {
-        token = localStorage.getItem('ludarium_token');
+        token = localStorage.getItem('ludarium_token') || localStorage.getItem('access_token');
     }
 
-    if (!token) {
-        token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyMSIsImV4cCI6MTc5Mjg3NTk3Nn0.8Kiajoqmtvmdt6ypcfUOGLwSEIPXmRC7ZNgU0_zpvNI";
-        localStorage.setItem('ludarium_token', token);
-    }
-
-    return token;
+    return token || "";
 }
 
 // Extrair o nome do utilizador a partir do token JWT
@@ -86,19 +195,61 @@ function obterUtilizadorAtualNome() {
     }
 }
 
+/**
+ * Verifica as permissões de administrador consultando o endpoint protegido `/me`
+ */
+async function verificarPermissoesAdmin() {
+    const token = obterToken();
+    if (!token) return;
+
+    try {
+        const response = await fetch(`/me`, {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (!response.ok) return;
+        const user = await response.json();
+
+        const isAdmin = (user.username === 'admin' || user.email === 'admin@ludarium.com' || user.is_admin === true);
+        const elementosAdmin = document.querySelectorAll('.admin-only');
+
+        if (isAdmin) {
+            elementosAdmin.forEach(el => {
+                el.classList.remove('admin-only');
+                el.style.display = 'block';
+            });
+        } else {
+            elementosAdmin.forEach(el => {
+                el.classList.add('admin-only');
+                el.style.display = 'none';
+            });
+        }
+    } catch (e) {
+        console.warn('Erro ao verificar permissões de admin na comunidade:', e);
+    }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const tokenUrl = urlParams.get('token');
+    if (tokenUrl) {
+        localStorage.setItem('ludarium_token', tokenUrl);
+        window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
+    verificarPermissoesAdmin();
+
     const linksMenu = document.querySelectorAll('.nav-links a');
     linksMenu.forEach(link => {
         link.addEventListener('click', (e) => {
-            const token = localStorage.getItem('ludarium_token');
-            if (token) {
+            const token = obterToken();
+            if (token && !link.getAttribute('href').includes('token=')) {
                 e.preventDefault();
                 try {
-                    const urlDestino = new URL(link.href);
+                    const urlDestino = new URL(link.href, window.location.origin);
                     urlDestino.searchParams.set('token', token);
                     window.location.href = urlDestino.toString();
                 } catch (err) {
-                    window.location.href = link.href;
+                    window.location.href = link.href + '?token=' + token;
                 }
             }
         });
@@ -544,7 +695,7 @@ async function apagarComentario(id) {
 }
 
 // ==========================================
-// GESTÃO DE FÓRUNS PÚBLICOS E CHAT DIRETO
+// GESTÃO DE FÓRUNS PÚBLICOS E CHAT DIRETO AO VIVO
 // ==========================================
 
 function abrirModalForum() {
@@ -818,6 +969,11 @@ async function selecionarForum(forumId) {
     if (inputArea) inputArea.style.display = 'flex';
     await carregarMembrosForum(forumId);
     await carregarMensagensForum(forumId);
+
+    // Ativa WebSocket e Polling integrado em tempo real para o Fórum selecionado
+    conectarWebSocketChat('/ws/forum', forumId, (m) => {
+        adicionarMensagemNaTelaContainer('forum-mensagens-container', m, obterUtilizadorAtualNome());
+    });
 }
 
 function iniciarContagemRegressivaForum(dataIsoExpiracao, elementoId) {
@@ -892,17 +1048,28 @@ async function carregarMensagensForum(forumId) {
             return;
         }
 
-        container.innerHTML = mensagens.map(m => {
-            const meu = meuNome && m.autor.toLowerCase() === meuNome.toLowerCase();
-            return `
-                <div style="max-width: 75%; align-self: ${meu ? 'flex-end' : 'flex-start'}; background: ${meu ? '#7c3aed' : '#334155'}; color: white; padding: 10px 14px; border-radius: 10px; font-size: 0.9rem; margin-bottom: 0.5rem;">
-                    <div style="font-size: 0.75rem; color: #cbd5e1; margin-bottom: 2px; font-weight: bold;">${m.autor}</div>
-                    <div>${m.conteudo}</div>
-                </div>
-            `;
-        }).join('');
+        container.innerHTML = '';
+        mensagens.forEach(m => adicionarMensagemNaTelaContainer('forum-mensagens-container', m, meuNome));
         container.scrollTop = container.scrollHeight;
     } catch (e) {}
+}
+
+function adicionarMensagemNaTelaContainer(containerId, m, meuNome) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    const avisoVazio = container.querySelector('p');
+    if (avisoVazio) avisoVazio.remove();
+
+    const meu = meuNome && m.autor && m.autor.toLowerCase() === meuNome.toLowerCase();
+    const div = document.createElement('div');
+    div.style.cssText = `max-width: 75%; align-self: ${meu ? 'flex-end' : 'flex-start'}; background: ${meu ? '#7c3aed' : '#334155'}; color: white; padding: 10px 14px; border-radius: 10px; font-size: 0.9rem; margin-bottom: 0.5rem; word-break: break-word;`;
+    div.innerHTML = `
+        <div style="font-size: 0.75rem; color: #cbd5e1; margin-bottom: 2px; font-weight: bold;">${m.autor}</div>
+        <div>${m.conteudo}</div>
+    `;
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
 }
 
 async function enviarMensagemForumAtivo() {
@@ -913,12 +1080,19 @@ async function enviarMensagemForumAtivo() {
         return;
     }
 
-    const token = obterToken();
     const input = document.getElementById('input-mensagem-forum');
     if (!input) return;
     const conteudo = input.value.trim();
     if (!conteudo) return;
 
+    const autor = obterUtilizadorAtualNome();
+
+    if (enviarMensagemWebSocket(conteudo, autor)) {
+        input.value = '';
+        return;
+    }
+
+    const token = obterToken();
     try {
         const res = await fetch(`${SERVICO_DE_COMUNIDADE_URL}/foruns/${forumAtualId}/mensagens`, {
             method: 'POST',
@@ -929,7 +1103,6 @@ async function enviarMensagemForumAtivo() {
 
         input.value = '';
         carregarMensagensForum(forumAtualId);
-        carregarMembrosForum(forumAtualId);
     } catch (e) {
         mostrarToast('Erro: ' + e.message, 'erro');
     }
@@ -1108,14 +1281,12 @@ function renderizarCandidatosGestao(candidatos) {
         const escapeNome = (c.nome || 'Utilizador').replace(/'/g, "\\'");
         const escapeUsername = (c.username || '@user').replace(/'/g, "\\'");
 
-        // Identifica se quem está a ver é o próprio candidato deste card
         const ehProprioCandidato = utilizadorAtual === (c.username || '').toLowerCase().replace('@', '') || utilizadorAtual === (c.user_email || '').split('@')[0].toLowerCase();
         
         let acoesDireita = '';
         const botaoChatHtml = `<button onclick="abrirChatCandidatura('${escapeNome}', '${escapeUsername}', ${c.id}, ${chatLiberadoNum})" style="background: #0d9488; color: white; border: none; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 0.75rem;" title="Chat direto">💬 Chat</button>`;
 
         if (ehProprioCandidato) {
-            // Se for o candidato: vê o status atual e a opção de apagar a candidatura/conversa
             let statusBadge = `<span style="color: #94a3b8; font-size: 0.75rem;">Pendente</span>`;
             if (c.status === 'aprovado') statusBadge = `<span style="color: #22c55e; font-size: 0.75rem; font-weight: bold;">✔ Aprovado</span>`;
             if (c.status === 'reprovado') statusBadge = `<span style="color: #ef4444; font-size: 0.75rem; font-weight: bold;">✖ Reprovado</span>`;
@@ -1130,7 +1301,6 @@ function renderizarCandidatosGestao(candidatos) {
                 <button onclick="apagarCandidatoGestao(${c.id})" style="background: #ef4444; color: white; border: none; padding: 5px 8px; border-radius: 6px; cursor: pointer; font-size: 0.75rem;" title="Apagar candidatura e conversa">🗑️ Apagar</button>
             `;
         } else {
-            // Se for o recrutador: vê os botões de aprovar, reprovar, chat e apagar
             if (c.status === 'aprovado') {
                 acoesDireita = `<span style="color: #22c55e; font-size: 0.75rem; font-weight: bold;">✔ Aprovado</span> ${botaoChatHtml} <button onclick="apagarCandidatoGestao(${c.id})" style="background: #ef4444; color: white; border: none; padding: 5px 8px; border-radius: 6px; cursor: pointer; font-size: 0.75rem;" title="Apagar Candidato">🗑️</button>`;
             } else if (c.status === 'reprovado') {
@@ -1160,6 +1330,7 @@ function renderizarCandidatosGestao(candidatos) {
         container.appendChild(item);
     });
 }
+
 function filtrarCandidatosGestao() {
     const inputBusca = document.getElementById('input-busca-candidatos');
     if (!inputBusca) return;
@@ -1225,17 +1396,13 @@ async function apagarCandidatoGestao(id) {
 }
 
 // ==========================================
-// FUNÇÕES SEPARADAS DE CHAT (ENGENHARIA LIMPA)
+// FUNÇÕES SEPARADAS DE CHAT EM TEMPO REAL
 // ==========================================
 
-// 1. CHAT DE CANDIDATURAS (Isolado)
 async function abrirChatCandidatura(nome, username, candidaturaId, chatLiberado = 0) {
     const utilizadorAtual = obterUtilizadorAtualNome().toLowerCase();
-    
-    // Se o nome do utilizador logado corresponder ao username do candidato, ele é o candidato (e não o recrutador)
     const ehCandidato = utilizadorAtual === username.toLowerCase().replace('@', '');
 
-    // Se for o candidato e o chat ainda não foi liberado (chatLiberado !== 1), impede a abertura
     if (ehCandidato && Number(chatLiberado) !== 1) {
         mostrarToast("O chat de candidatura estará disponível assim que o recrutador iniciar o contacto.", "erro");
         return;
@@ -1253,6 +1420,11 @@ async function abrirChatCandidatura(nome, username, candidaturaId, chatLiberado 
     if (modalEl) modalEl.style.display = 'flex';
 
     await carregarMensagensCandidaturaEspecifico();
+
+    // Ativa WebSocket e Polling integrado em tempo real para a Candidatura
+    conectarWebSocketChat('/ws/candidatura', candidaturaId, (m) => {
+        adicionarMensagemNaTelaContainer('chat-wa-mensagens', m, obterUtilizadorAtualNome());
+    });
 }
 
 async function carregarMensagensCandidaturaEspecifico() {
@@ -1277,15 +1449,8 @@ async function carregarMensagensCandidaturaEspecifico() {
             return;
         }
 
-        container.innerHTML = mensagens.map(m => {
-            const meu = meuNome && m.autor.toLowerCase() === meuNome.toLowerCase();
-            return `
-                <div style="max-width: 75%; align-self: ${meu ? 'flex-end' : 'flex-start'}; background: ${meu ? '#7c3aed' : '#334155'}; color: white; padding: 10px 14px; border-radius: 10px; font-size: 0.85rem; margin-bottom: 0.5rem;">
-                    <div style="font-size: 0.7rem; color: #cbd5e1; font-weight: bold; margin-bottom: 2px;">${m.autor}</div>
-                    <div>${m.conteudo}</div>
-                </div>
-            `;
-        }).join('');
+        container.innerHTML = '';
+        mensagens.forEach(m => adicionarMensagemNaTelaContainer('chat-wa-mensagens', m, meuNome));
         container.scrollTop = container.scrollHeight;
     } catch (e) {
         container.innerHTML = '<p style="color: #94a3b8; text-align: center; padding: 1rem; font-size: 0.85rem;">Inicie a conversa enviando a primeira mensagem abaixo.</p>';
@@ -1294,12 +1459,19 @@ async function carregarMensagensCandidaturaEspecifico() {
 
 async function enviarMensagemChatCandidatura() {
     if (!candidaturaChatAtualId) return;
-    const token = obterToken();
     const input = document.getElementById('chat-wa-input');
     if (!input) return;
     const conteudo = input.value.trim();
     if (!conteudo) return;
 
+    const autor = obterUtilizadorAtualNome();
+
+    if (enviarMensagemWebSocket(conteudo, autor)) {
+        input.value = '';
+        return;
+    }
+
+    const token = obterToken();
     try {
         const res = await fetch(`${SERVICO_DE_COMUNIDADE_URL}/candidaturas/${candidaturaChatAtualId}/mensagens`, {
             method: 'POST',
@@ -1319,10 +1491,9 @@ async function enviarMensagemChatCandidatura() {
     }
 }
 
-// 2. CHAT DE GRUPOS / EQUIPAS (Isolado)
 async function abrirChatGrupoEquipa(nome, tipo, grupoId) {
     grupoChatAtualId = grupoId;
-    candidaturaChatAtualId = null; // Garante limpeza do outro contexto
+    candidaturaChatAtualId = null; 
 
     const nomeEl = document.getElementById('chat-wa-nome');
     const avatarEl = document.getElementById('chat-wa-avatar');
@@ -1333,6 +1504,11 @@ async function abrirChatGrupoEquipa(nome, tipo, grupoId) {
     if (modalEl) modalEl.style.display = 'flex';
 
     await carregarMensagensGrupoEquipaEspecifico();
+
+    // Ativa WebSocket e Polling integrado em tempo real para o Grupo/Equipa
+    conectarWebSocketChat('/ws/grupo', grupoId, (m) => {
+        adicionarMensagemNaTelaContainer('chat-wa-mensagens', m, obterUtilizadorAtualNome());
+    });
 }
 
 async function carregarMensagensGrupoEquipaEspecifico() {
@@ -1357,15 +1533,8 @@ async function carregarMensagensGrupoEquipaEspecifico() {
             return;
         }
 
-        container.innerHTML = mensagens.map(m => {
-            const meu = meuNome && m.autor.toLowerCase() === meuNome.toLowerCase();
-            return `
-                <div style="max-width: 75%; align-self: ${meu ? 'flex-end' : 'flex-start'}; background: ${meu ? '#7c3aed' : '#334155'}; color: white; padding: 10px 14px; border-radius: 10px; font-size: 0.85rem; margin-bottom: 0.5rem;">
-                    <div style="font-size: 0.7rem; color: #cbd5e1; font-weight: bold; margin-bottom: 2px;">${m.autor}</div>
-                    <div>${m.conteudo}</div>
-                </div>
-            `;
-        }).join('');
+        container.innerHTML = '';
+        mensagens.forEach(m => adicionarMensagemNaTelaContainer('chat-wa-mensagens', m, meuNome));
         container.scrollTop = container.scrollHeight;
     } catch (e) {
         container.innerHTML = '<p style="color: #94a3b8; text-align: center; padding: 1rem; font-size: 0.85rem;">Inicie a conversa enviando a primeira mensagem abaixo.</p>';
@@ -1374,12 +1543,19 @@ async function carregarMensagensGrupoEquipaEspecifico() {
 
 async function enviarMensagemChatGrupoEquipa() {
     if (!grupoChatAtualId) return;
-    const token = obterToken();
     const input = document.getElementById('chat-wa-input');
     if (!input) return;
     const conteudo = input.value.trim();
     if (!conteudo) return;
 
+    const autor = obterUtilizadorAtualNome();
+
+    if (enviarMensagemWebSocket(conteudo, autor)) {
+        input.value = '';
+        return;
+    }
+
+    const token = obterToken();
     try {
         const res = await fetch(`${SERVICO_DE_COMUNIDADE_URL}/grupos/${grupoChatAtualId}/mensagens`, {
             method: 'POST',
@@ -1399,12 +1575,19 @@ async function enviarMensagemChatGrupoEquipa() {
     }
 }
 
-// Rotas unificadas do modal flutuante de chat
 function fecharModalChatWhatsapp() {
     const modal = document.getElementById('modal-chat-whatsapp');
     if (modal) modal.style.display = 'none';
     candidaturaChatAtualId = null;
     grupoChatAtualId = null;
+    if (wsChatAtivo) {
+        wsChatAtivo.close();
+        wsChatAtivo = null;
+    }
+    if (pollingChatInterval) {
+        clearInterval(pollingChatInterval);
+        pollingChatInterval = null;
+    }
 }
 
 async function enviarMensagemChatWhatsapp() {

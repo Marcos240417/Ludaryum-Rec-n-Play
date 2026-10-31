@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from fastapi import FastAPI, Depends, HTTPException, status, Query, Body
+from fastapi import FastAPI, Depends, HTTPException, status, Query, Body, WebSocket, WebSocketDisconnect
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -10,6 +10,7 @@ from sqlalchemy.future import select
 from sqlalchemy import text
 from sqlalchemy.orm import selectinload
 from datetime import datetime, timedelta
+from typing import Dict, List
 import models
 import database
 import schemas
@@ -17,9 +18,39 @@ import schemas
 SECRET_KEY = "ludarium_super_secret_key_jwt"
 ALGORITHM = "HS256"
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="http://localhost:8001/login")
+# CORREÇÃO: Removido o localhost fixo para suportar Cloudflare Tunnel dinamicamente
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
 app = FastAPI(title="Ludarium Community Service", version="1.0.0")
+
+# --- WEBSOCKET CONNECTION MANAGER ---
+class ChatConnectionManager:
+    def __init__(self):
+        # Mapeia uma chave única de sala/canal (ex: "forum_1", "candidatura_5", "grupo_2") para listas de WebSockets
+        self.active_connections: Dict[str, List[WebSocket]] = {}
+
+    async def connect(self, room_key: str, websocket: WebSocket):
+        await websocket.accept()
+        if room_key not in self.active_connections:
+            self.active_connections[room_key] = []
+        self.active_connections[room_key].append(websocket)
+
+    def disconnect(self, room_key: str, websocket: WebSocket):
+        if room_key in self.active_connections:
+            if websocket in self.active_connections[room_key]:
+                self.active_connections[room_key].remove(websocket)
+            if not self.active_connections[room_key]:
+                del self.active_connections[room_key]
+
+    async def broadcast(self, room_key: str, message: dict):
+        if room_key in self.active_connections:
+            for connection in self.active_connections[room_key]:
+                try:
+                    await connection.send_json(message)
+                except Exception:
+                    pass
+
+manager = ChatConnectionManager()
 
 # --- MIGRAÇÃO E CRIAÇÃO ASSÍNCRONA NO ARRANQUE ---
 @app.on_event("startup")
@@ -50,7 +81,7 @@ if os.path.exists(FRONTEND_DIR):
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Permite qualquer origem para evitar conflitos entre localhost e 127.0.0.1
+    allow_origins=["*"],  # Permite qualquer origem para evitar conflitos com Cloudflare
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -86,9 +117,45 @@ async def criar_notificacao_aux(db: AsyncSession, destinatario_email: str, conte
     )
     db.add(nova_notif)
 
+# --- WEBSOCKET ENDPOINTS EM TEMPO REAL ---
+
+@app.websocket("/ws/forum/{forum_id}")
+async def ws_forum_endpoint(websocket: WebSocket, forum_id: int):
+    room_key = f"forum_{forum_id}"
+    await manager.connect(room_key, websocket)
+    try:
+        while True:
+            data = await websocket.receive_json()
+            await manager.broadcast(room_key, data)
+    except WebSocketDisconnect:
+        manager.disconnect(room_key, websocket)
+
+@app.websocket("/ws/candidatura/{candidatura_id}")
+async def ws_candidatura_endpoint(websocket: WebSocket, candidatura_id: int):
+    room_key = f"candidatura_{candidatura_id}"
+    await manager.connect(room_key, websocket)
+    try:
+        while True:
+            data = await websocket.receive_json()
+            await manager.broadcast(room_key, data)
+    except WebSocketDisconnect:
+        manager.disconnect(room_key, websocket)
+
+@app.websocket("/ws/grupo/{grupo_id}")
+async def ws_grupo_endpoint(websocket: WebSocket, grupo_id: int):
+    room_key = f"grupo_{grupo_id}"
+    await manager.connect(room_key, websocket)
+    try:
+        while True:
+            data = await websocket.receive_json()
+            await manager.broadcast(room_key, data)
+    except WebSocketDisconnect:
+        manager.disconnect(room_key, websocket)
+
+
 @app.get("/")
 def raiz():
-    return {"mensagem": "Serviço de Comunidade assíncrono com autenticação JWT, fóruns, grupos e gestão de candidatos funcional!"}
+    return {"mensagem": "Serviço de Comunidade assíncrono compatível com Cloudflare, WebSockets e JWT funcional!"}
 
 @app.get("/publicacoes", response_model=list[schemas.PublicacaoResponse])
 async def listar_publicacoes(db: AsyncSession = Depends(obter_db)):
@@ -310,10 +377,8 @@ async def listar_candidatos_publicacao(publicacao_id: int, db: AsyncSession = De
     if not pub:
         raise HTTPException(status_code=404, detail="Publicação não encontrada.")
 
-    # Verificação estricta: só é o criador se o e-mail for exatamente igual ao da publicação
     is_criador = bool(pub.creator_email and pub.creator_email.lower() == utilizador_email.lower())
     
-    # O admin global do sistema (ex: admin@ludarium.com) pode ver tudo, mas SÓ se não for ele próprio o candidato a candidatar-se na vaga de outro
     cand_res = await db.execute(select(models.PublicacaoCandidatoModel).filter_by(
         publicacao_id=publicacao_id, 
         user_email=utilizador_email
@@ -322,7 +387,6 @@ async def listar_candidatos_publicacao(publicacao_id: int, db: AsyncSession = De
 
     resultado = []
 
-    # Se for o criador real da publicação, vê todos os candidatos inscritos na sua vaga
     if is_criador:
         candidatos_res = await db.execute(select(models.PublicacaoCandidatoModel).filter_by(publicacao_id=publicacao_id))
         candidatos = candidatos_res.scalars().all()
@@ -339,7 +403,6 @@ async def listar_candidatos_publicacao(publicacao_id: int, db: AsyncSession = De
                 "avatar": c.nome[0].upper() if c.nome else "U"
             })
             
-    # Se ele estiver inscrito como candidato (mesmo sendo o admin), deve ver o card do Recrutador real (dono da publicação)
     elif candidato_inscrito:
         nome_recrutador = pub.autor or "Recrutador"
         email_recrutador = pub.creator_email or "recrutador@ludarium.com"
@@ -1376,24 +1439,19 @@ async def remover_membro_grupo(
     db: AsyncSession = Depends(obter_db), 
     utilizador_email: str = Depends(obter_utilizador_atual)
 ):
-    # Limpa e formata o email do membro alvo
     email_alvo = membro_email.strip().lower()
 
-    # Verifica se o utilizador atual é admin na tabela de membros
     admin_res = await db.execute(select(models.GrupoMembroModel).filter_by(grupo_id=grupo_id, user_email=utilizador_email, role="admin"))
     admin_check = admin_res.scalars().first()
 
-    # Verifica se o utilizador atual é o criador (owner) do grupo
     grupo_res = await db.execute(select(models.GrupoPrivadoModel).filter_by(id=grupo_id))
     grupo = grupo_res.scalars().first()
     
     is_owner = grupo and grupo.owner_email and grupo.owner_email.lower() == utilizador_email.lower()
 
-    # Apenas administradores do grupo ou o criador podem remover membros
     if not admin_check and not is_owner:
         raise HTTPException(status_code=403, detail="Apenas administradores ou o criador do grupo podem excluir utilizadores.")
 
-    # Procura o membro a ser removido
     membro_res = await db.execute(select(models.GrupoMembroModel).filter_by(grupo_id=grupo_id, user_email=email_alvo))
     membro_alvo = membro_res.scalars().first()
     if not membro_alvo:
@@ -1411,11 +1469,9 @@ async def atualizar_titulo_chat(
     db: AsyncSession = Depends(obter_db), 
     utilizador_email: str = Depends(obter_utilizador_atual)
 ):
-    # Verifica se o utilizador atual é admin na tabela de membros
     admin_res = await db.execute(select(models.GrupoMembroModel).filter_by(grupo_id=grupo_id, user_email=utilizador_email, role="admin"))
     admin_check = admin_res.scalars().first()
 
-    # Verifica se o grupo existe e se o utilizador é o criador (owner)
     grupo_res = await db.execute(select(models.GrupoPrivadoModel).filter(models.GrupoPrivadoModel.id == grupo_id))
     grupo = grupo_res.scalars().first()
     if not grupo:
@@ -1423,7 +1479,6 @@ async def atualizar_titulo_chat(
 
     is_owner = grupo.owner_email and grupo.owner_email.lower() == utilizador_email.lower()
 
-    # Apenas administradores do grupo ou o criador podem alterar o título
     if not admin_check and not is_owner:
         raise HTTPException(status_code=403, detail="Apenas administradores ou o criador podem alterar o título do chat.")
 

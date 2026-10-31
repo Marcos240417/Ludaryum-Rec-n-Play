@@ -9,7 +9,7 @@ class CampanhaModel(Base):
     titulo = Column(String, nullable=False)
     descricao = Column(Text, nullable=False)
     categoria = Column(String, nullable=False)  # Ex: "GAME JAM", "TRILHAS DE ESTUDO"
-    nivel = Column(String, nullable=False)       # Ex: "Intermediário"
+    nivel = Column(String, nullable=False)        # Ex: "Intermediário"
     participantes_qtd = Column(Integer, default=0)
     recompensa_xp = Column(Integer, default=2500)
     formato = Column(String, default="Equipe")
