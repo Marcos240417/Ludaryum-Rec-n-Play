@@ -1,5 +1,5 @@
 // ==========================================
-// LUDARIUM - PAINEL ADMINISTRATIVO (ADMIN.JS COM DOSSIÊ FORENSE E CIBERSEGURANÇA)
+// LUDARIUM - PAINEL ADMINISTRATIVO (ADMIN.JS COM DOSSIÊ FORENSE, CIBERSEGURANÇA E LGPD)
 // Compatível com Localhost e Cloudflare Tunnel
 // ==========================================
 
@@ -41,6 +41,7 @@ async function verificarSessaoAdmin() {
         pingServices();
         loadOverviewCounts();
         fetchUsers();
+        fetchAdminDossier(); // Carrega o Dossiê de Conformidade LGPD e Cibersegurança ao iniciar
     } catch (e) {
         console.error('Erro de autenticação de admin:', e);
         alert('Sessão inválida. Por favor, faça login novamente.');
@@ -73,6 +74,7 @@ function switchTab(tabId) {
     if (tabId === 'projects') fetchProjects();
     if (tabId === 'denuncias') carregarDenunciasAdmin();
     if (tabId === 'gateway') pingServices();
+    if (tabId === 'overview') fetchAdminDossier();
 }
 
 // Testar conectividade real dos microsserviços e renderizar no Grid Reativo do Gateway
@@ -86,7 +88,7 @@ async function pingServices() {
     }
     
     const services = [
-        { name: 'Auth Service', port: 8001, desc: 'Gestão de Autenticação, Utilizadores e JWT' },
+        { name: 'Auth Service', port: 8001, desc: 'Gestão de Autenticação, Utilizadores, JWT e LGPD' },
         { name: 'Community Service', port: 8002, desc: 'Fóruns, Comunidade e Interações Sociais' },
         { name: 'Campaigns Service', port: 8003, desc: 'Campanhas, Recompensas e Sistema de XP' },
         { name: 'Profile Service', port: 8004, desc: 'Perfis de Jogador e Preferências' },
@@ -168,6 +170,72 @@ async function loadOverviewCounts() {
         }
     } catch (e) {
         if (elCampaigns) elCampaigns.innerText = '1';
+    }
+}
+
+// --- MÓDULO DE DOSSIÊ DE CONFORMIDADE LGPD E CIBERSEGURANÇA ---
+async function fetchAdminDossier() {
+    const token = obterTokenAdmin();
+    const containerKpiOptIn = document.getElementById('kpiOptIn');
+    const containerKpiTotal = document.getElementById('kpiTotalUsers');
+    const containerKpiRate = document.getElementById('kpiRate');
+    const tbodyDossier = document.getElementById('dossierTableBody');
+
+    if (!tbodyDossier) return;
+
+    try {
+        const response = await fetch('/api/admin/dossier', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!response.ok) throw new Error("Erro ao carregar dossiê analítico de conformidade.");
+
+        const data = await response.json();
+        
+        if (containerKpiOptIn) containerKpiOptIn.innerText = data.kpis.opt_in_count;
+        if (containerKpiTotal) containerKpiTotal.innerText = data.kpis.total_users;
+        if (containerKpiRate) containerKpiRate.innerText = data.kpis.opt_rate + "%";
+
+        let htmlRows = '';
+        data.recent_logs.forEach(log => {
+            const statusBadge = log.analytics_opt_in === 1 
+                ? '<span style="color: #10b981; background: rgba(16, 185, 129, 0.1); padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold;">Opt-In Ativo</span>'
+                : '<span style="color: #ef4444; background: rgba(239, 68, 68, 0.1); padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold;">Recusado / Opt-Out</span>';
+            
+            htmlRows += `
+                <tr style="border-bottom: 1px solid var(--border-color);">
+                    <td style="padding: 12px; color: #fff;">${log.username} (${log.email})</td>
+                    <td style="padding: 12px;">${statusBadge}</td>
+                    <td style="padding: 12px; color: var(--text-muted); font-family: monospace;">${log.consent_date}</td>
+                </tr>
+            `;
+        });
+
+        tbodyDossier.innerHTML = htmlRows || `<tr><td colspan="3" style="text-align: center; color: var(--text-muted); padding: 1rem;">Nenhum registo de consentimento encontrado.</td></tr>`;
+    } catch (error) {
+        console.error("Falha no dossiê de conformidade:", error);
+    }
+}
+
+// Função para limpar todo o histórico de acessos e dados forenses (LGPD / Direito ao Esquecimento)
+async function limparDossieForense() {
+    if (!confirm("⚠️ ATENÇÃO: Tem a certeza absoluta de que deseja ELIMINAR TODO O HISTÓRICO DE ACESSOS E DADOS FORENSES?\n\nEsta ação é irreversível e apagará todos os registos de telemetria, IPs e tentativas de intrusão.")) {
+        return;
+    }
+
+    const token = obterTokenAdmin();
+    try {
+        const res = await fetch('/admin/dossie-forense/limpar', {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!res.ok) throw new Error("Falha ao limpar o histórico forense.");
+
+        alert("Histórico de acessos e telemetria limpo com sucesso!");
+        fetchAdminDossier();
+    } catch (e) {
+        alert("Erro ao limpar o histórico: " + e.message);
     }
 }
 
@@ -272,6 +340,7 @@ async function deleteUser() {
             closeUserModal();
             fetchUsers();
             loadOverviewCounts();
+            fetchAdminDossier();
         } else {
             alert("Erro ao excluir utilizador. Verifique permissões.");
         }
@@ -832,7 +901,7 @@ async function apagarForumPorDenuncia(forumId, denunciaId) {
     }
 }
 
-// --- MÓDULO DE DOSSIÊ FORENSE E CIBERSEGURANÇA ---
+// --- MÓDULO DE DOSSIÊ FORENSE, CIBERSEGURANÇA E TENTATIVAS DE INVASÃO ---
 
 async function exportDossierReport() {
     const token = obterTokenAdmin();
@@ -860,21 +929,32 @@ function gerarJanelaRelatorioDossie(dados) {
     const meta = dados.metadados_relatorio || {};
     const resumo = dados.resumo_executivo || {};
     const logs = dados.forense_telemetria_acessos || [];
+    const tentativasBloqueadas = dados.tentativas_intrusao_bloqueadas || 0;
 
-    let logsRowsHtml = logs.map(l => `
-        <tr>
-            <td>${l.timestamp ? new Date(l.timestamp).toLocaleString() : 'N/A'}</td>
-            <td><strong>${l.username}</strong></td>
-            <td><code>${l.ip_address || 'N/A'}</code></td>
-            <td>${l.dispositivo || 'N/A'}</td>
-            <td>${l.sistema_operacional || 'N/A'}</td>
-            <td>${l.navegador || 'N/A'}</td>
-            <td>${l.localizacao || 'N/A'}</td>
-        </tr>
-    `).join('');
+    let logsRowsHtml = logs.map(l => {
+        const severidade = l.severidade || 'BAIXA';
+        let badgeCor = '#16a34a'; // Verde
+        if (severidade === 'ALTA') badgeCor = '#f59e0b'; // Amarelo/Laranja
+        if (severidade === 'CRITICA') badgeCor = '#dc2626'; // Vermelho
+
+        return `
+            <tr>
+                <td>${l.timestamp ? new Date(l.timestamp).toLocaleString() : 'N/A'}</td>
+                <td><strong>${l.username || 'Desconhecido'}</strong></td>
+                <td><code>${l.ip_address || 'N/A'}</code></td>
+                <td><span style="color: ${badgeCor}; font-weight: bold;">${severidade}</span></td>
+                <td>${l.acao || 'LOGIN_SUCESSO'}</td>
+                <td>${l.dispositivo || 'N/A'}</td>
+                <td>${l.sistema_operacional || 'N/A'}</td>
+                <td>${l.navegador || 'N/A'}</td>
+                <td><strong>${l.localizacao || 'Brasil / Local (Detectado por IP)'}</strong></td>
+                <td><small>${l.detalhes_payload || 'Sem carga adicional'}</small></td>
+            </tr>
+        `;
+    }).join('');
 
     if (logs.length === 0) {
-        logsRowsHtml = `<tr><td colspan="7" style="text-align: center; color: #64748b;">Nenhum registo de telemetria encontrado.</td></tr>`;
+        logsRowsHtml = `<tr><td colspan="10" style="text-align: center; color: #64748b;">Nenhum registo de telemetria ou ameaça encontrado.</td></tr>`;
     }
 
     printWindow.document.write(`
@@ -882,22 +962,22 @@ function gerarJanelaRelatorioDossie(dados) {
         <html lang="pt">
         <head>
             <meta charset="UTF-8">
-            <title>Dossiê Oficial de Cibersegurança - Ludarium</title>
+            <title>Dossiê Oficial de Cibersegurança e Forense - Ludarium</title>
             <style>
-                body { font-family: 'Segoe UI', Arial, sans-serif; color: #1e293b; padding: 40px; background-color: #ffffff; }
-                h1 { color: #2563eb; border-bottom: 2px solid #e2e8f0; padding-bottom: 12px; font-size: 24px; }
-                .meta { margin-bottom: 25px; color: #475569; font-size: 0.9rem; background: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid #e2e8f0; }
-                .section { margin-bottom: 30px; }
-                .section h3 { color: #0f172a; font-size: 1.15rem; margin-bottom: 10px; border-left: 4px solid #2563eb; padding-left: 8px; }
+                body { font-family: 'Segoe UI', Arial, sans-serif; color: #1e293b; padding: 30px; background-color: #ffffff; }
+                h1 { color: #2563eb; border-bottom: 2px solid #e2e8f0; padding-bottom: 12px; font-size: 22px; }
+                .meta { margin-bottom: 20px; color: #475569; font-size: 0.85rem; background: #f8fafc; padding: 12px; border-radius: 6px; border: 1px solid #e2e8f0; }
+                .section { margin-bottom: 25px; }
+                .section h3 { color: #0f172a; font-size: 1.05rem; margin-bottom: 8px; border-left: 4px solid #2563eb; padding-left: 8px; }
                 table { width: 100%; border-collapse: collapse; margin-top: 5px; }
-                th, td { padding: 10px 12px; border-bottom: 1px solid #cbd5e1; text-align: left; font-size: 0.85rem; }
-                th { background: #f1f5f9; color: #334155; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em; }
+                th, td { padding: 8px 10px; border-bottom: 1px solid #cbd5e1; text-align: left; font-size: 0.78rem; }
+                th { background: #f1f5f9; color: #334155; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.05em; }
                 code { font-family: monospace; background: #e2e8f0; padding: 2px 4px; border-radius: 4px; }
-                .footer { margin-top: 40px; text-align: center; font-size: 0.75rem; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 15px; }
+                .footer { margin-top: 30px; text-align: center; font-size: 0.72rem; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 12px; }
             </style>
         </head>
         <body>
-            <h1>🛡️ Dossiê de Auditoria e Cibersegurança - Ludarium</h1>
+            <h1>🛡️ Dossiê de Auditoria, Cibersegurança e Forense - Ludarium</h1>
             <div class="meta">
                 <p><strong>Gerado em:</strong> ${meta.gerado_em || 'N/A'}</p>
                 <p><strong>Sistema:</strong> ${meta.sistema || 'Ludarium Enterprise Security Suite'}</p>
@@ -905,33 +985,37 @@ function gerarJanelaRelatorioDossie(dados) {
             </div>
 
             <div class="section">
-                <h3>📊 Resumo Executivo</h3>
+                <h3>📊 Resumo Executivo e Tentativas de Intrusão</h3>
                 <table>
-                    <tr><th>Métrica de Auditoria</th><th>Valor Registado</th></tr>
+                    <tr><th>Métrica de Auditoria / Segurança</th><th>Valor Registado</th></tr>
                     <tr><td>Total de Utilizadores Registados</td><td><strong>${resumo.total_utilizadores_registados || 0}</strong></td></tr>
-                    <tr><td>Total de Registos Forenses (Acessos)</td><td><strong>${resumo.total_logs_forenses_registados || 0}</strong></td></tr>
-                    <tr><td>Estado Geral do Sistema</td><td><span style="color: #16a34a; font-weight: bold;">${resumo.status_sistema || 'Operacional'}</span></td></tr>
+                    <tr><td>Total de Registos Forenses e Acessos</td><td><strong>${resumo.total_logs_forenses_registados || 0}</strong></td></tr>
+                    <tr><td>Tentativas de Intrusão / Brute-Force Bloqueadas</td><td><strong style="color: #dc2626;">${tentativasBloqueadas}</strong></td></tr>
+                    <tr><td>Estado Geral de Segurança</td><td><span style="color: #16a34a; font-weight: bold;">${resumo.status_sistema || 'Operacional e Protegido'}</span></td></tr>
                 </table>
             </div>
 
             <div class="section">
-                <h3>🛰️ Telemetria Forense e Logs de Acesso Recentes (IP, Dispositivo e Navegador)</h3>
+                <h3>🛰️ Telemetria Forense, IPs, Dispositivos, Localização e Tentativas de Invasão</h3>
                 <table>
                     <tr>
                         <th>Data / Hora (UTC)</th>
-                        <th>Utilizador</th>
+                        <th>Utilizador / Alvo</th>
                         <th>Endereço IP</th>
+                        <th>Severidade</th>
+                        <th>Ação / Evento</th>
                         <th>Dispositivo</th>
-                        <th>Sistema Operacional</th>
+                        <th>SO</th>
                         <th>Navegador</th>
                         <th>Localização</th>
+                        <th>Payload / Detalhes</th>
                     </tr>
                     ${logsRowsHtml}
                 </table>
             </div>
 
             <div class="footer">
-                <p>Relatório oficial gerado automaticamente para fins de auditoria de cibersegurança e conformidade técnica.</p>
+                <p>Relatório forense oficial gerado automaticamente para fins de auditoria de cibersegurança, proteção de dados e conformidade técnica.</p>
             </div>
 
             <script>

@@ -65,3 +65,5 @@ def iniciar_servicos():
 
 if __name__ == "__main__":
     iniciar_servicos()
+
+#Para rodar automaticamente o serviço no tunel python start.py    

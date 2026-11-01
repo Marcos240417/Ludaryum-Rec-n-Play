@@ -1,3 +1,4 @@
+# Caminho: servico-de-gateway/main.py
 from fastapi import FastAPI, Request, HTTPException, Header, Response, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
@@ -6,7 +7,7 @@ import os
 import httpx
 import websockets
 
-app = FastAPI(title="Gateway de API - Ludarium", version="1.1.0")
+app = FastAPI(title="Gateway de API - Ludarium", version="1.1.1")
 
 # Configuração de CORS para permitir requisições do Frontend
 app.add_middleware(
@@ -203,10 +204,18 @@ async def gw_register(request: Request):
 async def gw_me(request: Request):
     return await reencaminhar_pedido(SERVICOS["auth"], request, "me")
 
-# --- Rotas de Utilizadores e Dossiê (Encaminhadas para o Auth Service) ---
+# --- Rotas de Utilizadores, Dossiê e Limpeza Forense (Encaminhadas para o Auth Service) ---
 @app.get("/admin/dossie-completo")
 async def gw_admin_dossie(request: Request):
     return await reencaminhar_pedido(SERVICOS["auth"], request, "admin/dossie-completo")
+
+@app.get("/api/admin/dossier")
+async def gw_api_admin_dossier(request: Request):
+    return await reencaminhar_pedido(SERVICOS["auth"], request, "api/admin/dossier")
+
+@app.delete("/admin/dossie-forense/limpar")
+async def gw_limpar_dossie_forense(request: Request):
+    return await reencaminhar_pedido(SERVICOS["auth"], request, "admin/dossie-forense/limpar")
 
 @app.api_route("/users", methods=["GET", "POST"])
 async def gw_users_root(request: Request):

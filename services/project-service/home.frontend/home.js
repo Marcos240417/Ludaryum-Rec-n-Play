@@ -333,7 +333,7 @@ function atualizarListaEquipeUI() {
 }
 
 /**
- * Submete um novo projeto
+ * Submete um novo projeto incluindo o GitHub, Código Aberto e Termos LGPD/Normas
  */
 async function enviarNovoProjeto(event) {
     event.preventDefault();
@@ -349,6 +349,27 @@ async function enviarNovoProjeto(event) {
     formData.append('progress', document.getElementById('projProgress').value);
     formData.append('executavel_navegador', document.getElementById('projExecutavel').checked ? '1' : '0');
     
+    // --- CAMPOS NOVOS DO GITHUB E COMPLIANCE ---
+    const githubUrl = document.getElementById('projGithubUrl') ? document.getElementById('projGithubUrl').value : '';
+    if (githubUrl) {
+        formData.append('github_url', githubUrl);
+    }
+    
+    const codigoAberto = document.getElementById('projCodigoAberto') ? document.getElementById('projCodigoAberto').checked : false;
+    formData.append('codigo_aberto', codigoAberto ? 'true' : 'false');
+
+    const aceiteLgpd = document.getElementById('projCheckLgpd') ? document.getElementById('projCheckLgpd').checked : false;
+    const aceiteNormas = document.getElementById('projCheckNormas') ? document.getElementById('projCheckNormas').checked : false;
+
+    if (!aceiteLgpd || !aceiteNormas) {
+        mostrarToast('É obrigatório aceitar a LGPD e as Normas e Garantias da Ludarium.', 'erro');
+        return;
+    }
+
+    formData.append('aceite_lgpd', aceiteLgpd ? 'true' : 'false');
+    formData.append('aceite_normas', aceiteNormas ? 'true' : 'false');
+    // -------------------------------------------
+
     const campaignId = document.getElementById('projCampaignSelect').value;
     if (campaignId) {
         formData.append('campaign_id', campaignId);
@@ -376,21 +397,24 @@ async function enviarNovoProjeto(event) {
             body: formData
         });
 
-        if (!response.ok) throw new Error(`Erro ao criar projeto: ${response.status}`);
+        if (!response.ok) {
+            const errJson = await response.json().catch(() => ({}));
+            throw new Error(errJson.detail || `Erro ao criar projeto: ${response.status}`);
+        }
 
         fecharModalProjeto();
         carregarProjetosHome();
         carregarProjetosSobInspecaoUsuario();
         form.reset();
-        mostrarToast('Projeto publicado com sucesso e equipa vinculada!', 'sucesso');
+        mostrarToast('Projeto publicado com sucesso!', 'sucesso');
     } catch (error) {
         console.error('Erro na submissão:', error);
-        mostrarToast('Erro ao criar projeto.', 'erro');
+        mostrarToast(error.message || 'Erro ao criar projeto.', 'erro');
     }
 }
 
 /**
- * Carrega a lista de projetos na Home validando estritamente a autoria e permissões pelo token.
+ * Carrega a lista de projetos na Home, exibindo botão de GitHub e acesso total se código aberto.
  */
 async function carregarProjetosHome(tagFiltro = '') {
     const grid = document.getElementById('projectsGrid');
@@ -420,7 +444,6 @@ async function carregarProjetosHome(tagFiltro = '') {
         const usuarioLogado = obterUtilizadorAtualDoToken();
         const token = obterToken();
         
-        // Verifica se é admin real consultando via flag ou identidade
         let éAdmin = (usuarioLogado === 'admin' || usuarioLogado === 'admin@ludarium.com');
         try {
             const meRes = await fetch(`/me`, { headers: { 'Authorization': 'Bearer ' + token } });
@@ -465,6 +488,7 @@ async function carregarProjetosHome(tagFiltro = '') {
             const safeCampaign = p.campaign_id || '';
             const safeStatus = encodeURIComponent(p.status || '');
             const safeReply = encodeURIComponent(p.inspection_reply || '');
+            const safeGithub = encodeURIComponent(p.github_url || '');
 
             let membrosHTML = '';
             if (p.members) {
@@ -485,6 +509,21 @@ async function carregarProjetosHome(tagFiltro = '') {
                 }
             }
 
+            // --- GESTÃO DE VISIBILIDADE DE CÓDIGO ABERTO VS PRIVADO ---
+            let githubBadgeHTML = '';
+            if (p.codigo_aberto) {
+                githubBadgeHTML += `<span style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: bold; display: inline-block; margin-top: 6px;" title="Acesso total liberado">🔓 Código Aberto</span>`;
+                if (p.github_url) {
+                    githubBadgeHTML += ` <a href="${p.github_url}" target="_blank" style="color: #60a5fa; font-size: 0.75rem; text-decoration: underline; margin-left: 6px;">🔗 Ver Repositório</a>`;
+                }
+            } else {
+                githubBadgeHTML += `<span style="background: rgba(107, 114, 128, 0.2); color: #9ca3af; border: 1px solid rgba(107, 114, 128, 0.4); padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; display: inline-block; margin-top: 6px;">🔒 Projeto Privado (Apenas Dados Básicos)</span>`;
+                if (p.github_url && podeGerir) {
+                    githubBadgeHTML += ` <a href="${p.github_url}" target="_blank" style="color: #60a5fa; font-size: 0.75rem; text-decoration: underline; margin-left: 6px;">🔗 GitHub (Privado/Admin)</a>`;
+                }
+            }
+            // -----------------------------------------------------------
+
             const corFavorito = p.favorito === 1 ? '#f59e0b' : '#9ca3af';
 
             card.innerHTML = `
@@ -496,7 +535,8 @@ async function carregarProjetosHome(tagFiltro = '') {
                     <div class="project-studio">${p.studio || 'Estúdio Independente'}</div>
                     <div class="project-title">${p.title}</div>
                     <div class="project-desc">${p.description}</div>
-                    <div class="progress-bar-bg">
+                    <div>${githubBadgeHTML}</div>
+                    <div class="progress-bar-bg" style="margin-top: 8px;">
                         <div class="progress-bar-fill" style="width: ${p.progress || 100}%;"></div>
                     </div>
                     <div class="project-tags">
@@ -515,7 +555,7 @@ async function carregarProjetosHome(tagFiltro = '') {
                 </div>
                 ${podeGerir ? `
                     <div class="project-author-actions">
-                        <button class="btn-action-edit" onclick="abrirModalEditar(event, '${p.id}', '${safeTitle}', '${safeDesc}', '${p.progress || 100}', '${safeTags}', '${safeMembers}', '${safeCampaign}', '${safeStatus}', '${safeReply}')">✏️ Editar</button>
+                        <button class="btn-action-edit" onclick="abrirModalEditar(event, '${p.id}', '${safeTitle}', '${safeDesc}', '${p.progress || 100}', '${safeTags}', '${safeMembers}', '${safeCampaign}', '${safeStatus}', '${safeReply}', '${safeGithub}', '${p.codigo_aberto ? 1 : 0}')">✏️ Editar</button>
                         <button class="btn-action-delete" onclick="excluirProjeto(event, '${p.id}')">🗑️ Excluir</button>
                     </div>
                 ` : ''}
@@ -638,7 +678,7 @@ function testarJogoSePossivel(projectId, buildPath) {
     }
 }
 
-async function abrirModalEditar(event, id, titleEncoded, descEncoded, progress, tagsEncoded, membersEncoded, campaignId, statusEncoded = '', replyEncoded = '') {
+async function abrirModalEditar(event, id, titleEncoded, descEncoded, progress, tagsEncoded, membersEncoded, campaignId, statusEncoded = '', replyEncoded = '', githubEncoded = '', codigoAbertoVal = 0) {
     event.stopPropagation();
     
     document.getElementById('editProjId').value = id;
@@ -646,6 +686,12 @@ async function abrirModalEditar(event, id, titleEncoded, descEncoded, progress, 
     document.getElementById('editProjDesc').value = decodeURIComponent(descEncoded);
     document.getElementById('editProjProgress').value = progress;
     document.getElementById('editProjTags').value = decodeURIComponent(tagsEncoded);
+
+    const githubField = document.getElementById('editProjGithubUrl');
+    if (githubField) githubField.value = decodeURIComponent(githubEncoded);
+
+    const codigoAbertoCheck = document.getElementById('editProjCodigoAberto');
+    if (codigoAbertoCheck) codigoAbertoCheck.checked = (String(codigoAbertoVal) === '1' || codigoAbertoVal === true);
 
     const status = decodeURIComponent(statusEncoded).toLowerCase();
     const replyContainer = document.getElementById('editInspectionReplyContainer');
@@ -789,6 +835,8 @@ async function salvarEdicaoProjeto(event) {
 
     const campaignIdVal = document.getElementById('editProjCampaignSelect').value;
     const replyField = document.getElementById('editInspectionReply');
+    const githubField = document.getElementById('editProjGithubUrl');
+    const codigoAbertoCheck = document.getElementById('editProjCodigoAberto');
 
     const dadosAtualizados = {
         title: document.getElementById('editProjTitle').value,
@@ -796,7 +844,9 @@ async function salvarEdicaoProjeto(event) {
         progress: parseInt(document.getElementById('editProjProgress').value),
         tags: document.getElementById('editProjTags').value,
         campaign_id: campaignIdVal ? parseInt(campaignIdVal) : null,
-        members: document.getElementById('editProjMembersField').value
+        members: document.getElementById('editProjMembersField').value,
+        github_url: githubField ? githubField.value.trim() : null,
+        codigo_aberto: codigoAbertoCheck ? codigoAbertoCheck.checked : false
     };
 
     if (replyField && replyField.offsetParent !== null) {
@@ -820,7 +870,7 @@ async function salvarEdicaoProjeto(event) {
             throw new Error(errData.detail || 'Falha ao atualizar o projeto.');
         }
 
-        mostrarToast('Projeto e resposta de inspeção guardados com sucesso!', 'sucesso');
+        mostrarToast('Projeto e definições de código aberto guardados com sucesso!', 'sucesso');
         fecharModalEditar();
         carregarProjetosHome();
         carregarProjetosSobInspecaoUsuario();
@@ -1228,6 +1278,7 @@ async function carregarProjetosSobInspecaoUsuario() {
                 const safeCampaign = p.campaign_id || '';
                 const safeStatus = encodeURIComponent(p.status || '');
                 const safeReply = encodeURIComponent(p.inspection_reply || '');
+                const safeGithub = encodeURIComponent(p.github_url || '');
 
                 html += `
                     <div style="background: #1e1b2e; border: 1px solid #f59e0b; padding: 20px; border-radius: 10px; margin-bottom: 12px;">
@@ -1244,7 +1295,7 @@ async function carregarProjetosSobInspecaoUsuario() {
                             <label style="display: block; color: #f59e0b; font-size: 0.85rem; font-weight: bold; margin-bottom: 6px;">✍️ Escrever Resposta / Comentário de Correção para o Inspetor:</label>
                             <textarea id="reply_input_${p.id}" rows="3" placeholder="Descreva as alterações e correções efetuadas neste projeto..." style="width: 100%; padding: 10px; background: #0f0e17; border: 1px solid #3f3d56; color: #fff; border-radius: 6px; resize: none; font-size: 0.85rem; margin-bottom: 10px;">${p.inspection_reply || ''}</textarea>
                             <div style="display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap;">
-                                <button onclick="abrirModalEditar(event, '${p.id}', '${safeTitle}', '${safeDesc}', '${p.progress || 100}', '${safeTags}', '${safeMembers}', '${safeCampaign}', '${safeStatus}', '${safeReply}')" style="background: transparent; border: 1px solid #7c3aed; color: #d8b4fe; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.8rem;">
+                                <button onclick="abrirModalEditar(event, '${p.id}', '${safeTitle}', '${safeDesc}', '${p.progress || 100}', '${safeTags}', '${safeMembers}', '${safeCampaign}', '${safeStatus}', '${safeReply}', '${safeGithub}', '${p.codigo_aberto ? 1 : 0}')" style="background: transparent; border: 1px solid #7c3aed; color: #d8b4fe; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.8rem;">
                                     ✏️ Editar Detalhes do Projeto
                                 </button>
                                 <button onclick="enviarRespostaInspecaoDireta('${p.id}')" style="background: #f59e0b; color: #000; border: none; padding: 7px 16px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 0.85rem;">

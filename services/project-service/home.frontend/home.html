@@ -17,7 +17,7 @@
 
     <nav class="navbar">
         <div class="nav-brand">
-            <span>L</span> LUDARIUM
+            <span>L</span> LUDARYUM
         </div>
         <ul class="nav-links">
             <li><a href="/home-ui/home.html" class="active">Projetos</a></li>
@@ -149,6 +149,10 @@
                 <label>Descrição curta *</label>
                 <textarea id="projDesc" rows="3" placeholder="Conte em poucas linhas o que torna sua ideia especial." required></textarea>
                 
+                <!-- NOVO CAMPO: REPOSITÓRIO GITHUB OPCIONAL -->
+                <label>Repositório GitHub (Opcional)</label>
+                <input type="url" id="projGithubUrl" placeholder="https://github.com/seu-usuario/seu-jogo" style="width: 100%; padding: 10px; background: #0f0e17; border: 1px solid #3f3d56; color: #fff; border-radius: 6px; margin-bottom: 12px; outline: none;">
+
                 <div class="form-grid-2">
                     <div>
                         <label>Ficheiro .ZIP do Jogo (Build Web) *</label>
@@ -191,12 +195,31 @@
                     <input type="hidden" id="projMembersField" name="members" value="">
                 </div>
 
+                <!-- NOVA OPÇÃO: CÓDIGO ABERTO VS PRIVADO -->
+                <div class="checkbox-wrapper" style="margin-bottom: 10px; background: rgba(124, 58, 237, 0.08); padding: 10px; border-radius: 6px; border: 1px solid rgba(124, 58, 237, 0.2);">
+                    <input type="checkbox" id="projCodigoAberto" value="1">
+                    <label for="projCodigoAberto" style="margin-top: 0; cursor: pointer; color: #d8b4fe; font-weight: bold;">🔓 Código Aberto (Liberar acesso total aos dados e código fonte aos utilizadores)</label>
+                </div>
+
                 <div class="checkbox-wrapper">
                     <input type="checkbox" id="projExecutavel" value="1" checked>
                     <label for="projExecutavel" style="margin-top: 0; cursor: pointer;">Pode ser executado no navegador (gerar build em sandbox)</label>
                 </div>
+
+                <hr style="border-color: #3f3d56; margin: 15px 0;">
+
+                <!-- CHECKBOXES OBRIGATÓRIOS: LGPD E NORMAS -->
+                <div class="checkbox-wrapper" style="margin-bottom: 8px;">
+                    <input type="checkbox" id="projCheckLgpd" required>
+                    <label for="projCheckLgpd" style="margin-top: 0; cursor: pointer; font-size: 0.85rem;">Declaro estar de acordo com o tratamento de dados conforme a <strong>LGPD (Lei Geral de Proteção de Dados)</strong>.</label>
+                </div>
+
+                <div class="checkbox-wrapper" style="margin-bottom: 15px;">
+                    <input type="checkbox" id="projCheckNormas" required>
+                    <label for="projCheckNormas" style="margin-top: 0; cursor: pointer; font-size: 0.85rem;">Concordo com as <strong>Normas e Garantias da Ludarium</strong> para portefólios e projetos.</label>
+                </div>
                 
-                <button type="submit" class="btn-primary" style="margin-top: 15px;">Enviar para análise e publicação</button>
+                <button type="submit" class="btn-primary" style="margin-top: 5px;">Enviar para análise e publicação</button>
             </form>
         </div>
     </div>
@@ -219,6 +242,10 @@
                 
                 <label>Descrição curta *</label>
                 <textarea id="editProjDesc" rows="3" required></textarea>
+
+                <!-- EDITAR GITHUB URL -->
+                <label>Repositório GitHub (Opcional)</label>
+                <input type="url" id="editProjGithubUrl" placeholder="https://github.com/seu-usuario/seu-jogo" style="width: 100%; padding: 10px; background: #0f0e17; border: 1px solid #3f3d56; color: #fff; border-radius: 6px; margin-bottom: 12px; outline: none;">
                 
                 <div class="form-grid-2">
                     <div>
@@ -236,6 +263,12 @@
                     <select id="editProjCampaignSelect" style="width: 100%; padding: 10px; background: #0f0e17; border: 1px solid #3f3d56; color: #fff; border-radius: 6px;">
                         <option value="">Nenhuma (Projeto Independente Geral)</option>
                     </select>
+                </div>
+
+                <!-- EDITAR OPÇÃO CÓDIGO ABERTO -->
+                <div class="checkbox-wrapper" style="margin-bottom: 12px; background: rgba(124, 58, 237, 0.08); padding: 10px; border-radius: 6px; border: 1px solid rgba(124, 58, 237, 0.2);">
+                    <input type="checkbox" id="editProjCodigoAberto" value="1">
+                    <label for="editProjCodigoAberto" style="margin-top: 0; cursor: pointer; color: #d8b4fe; font-weight: bold;">🔓 Código Aberto (Liberar acesso total aos dados e código fonte)</label>
                 </div>
 
                 <!-- CAIXA DE RESPOSTA DA INSPEÇÃO (Visível apenas se o projeto estiver sob inspeção) -->

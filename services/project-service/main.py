@@ -49,7 +49,8 @@ app.mount("/admin-dashboard", StaticFiles(directory=ADMIN_DIR), name="admin-dash
 @app.on_event("startup")
 async def startup_event():
     async with database.engine.begin() as conn:
-        await conn.run_sync(models.Base.metadata.create_all)
+        # CORREÇÃO: Alterado de models.Base para database.Base para corrigir o AttributeError
+        await conn.run_sync(database.Base.metadata.create_all)
         
         await conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS favorito INTEGER DEFAULT 0;"))
         await conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS build_path VARCHAR;"))
@@ -63,6 +64,11 @@ async def startup_event():
         await conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS inspection_reason VARCHAR;"))
         await conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS inspection_message VARCHAR;"))
         await conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS inspection_reply VARCHAR;"))
+        # --- NOVOS CAMPOS: GITHUB, CÓDIGO ABERTO E COMPLIANCE ---
+        await conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS github_url VARCHAR;"))
+        await conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS codigo_aberto BOOLEAN DEFAULT FALSE;"))
+        await conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS aceite_lgpd BOOLEAN DEFAULT FALSE;"))
+        await conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS aceite_normas BOOLEAN DEFAULT FALSE;"))
 
 DIRETORIO_BUILDS = os.path.join(BASE_DIR, "sandbox_builds")
 DIRETORIO_POSTERS = os.path.join(BASE_DIR, "sandbox_posters")
@@ -101,7 +107,7 @@ def obter_utilizador_atual(token: str = Depends(oauth2_scheme)):
 
 @app.get("/")
 def ler_raiz():
-    return {"mensagem": "Project Service com autenticação JWT, suporte a builds web, posters e inspeção a funcionar!"}
+    return {"mensagem": "Project Service com autenticação JWT, suporte a builds web, posters, código aberto, LGPD e inspeção a funcionar!"}
 
 @app.get("/projects", response_model=list[schemas.ProjectResponse])
 @app.get("/projects/", response_model=list[schemas.ProjectResponse])
@@ -123,7 +129,11 @@ async def listar_projetos(tag: str | None = Query(None), db: AsyncSession = Depe
             executavel_navegador=1,
             build_path="sandbox_builds/neon_afterlight",
             poster_path=None,
-            status="Ativo"
+            status="Ativo",
+            github_url="https://github.com/Marcos240417/Neon-Afterlight",
+            codigo_aberto=True,
+            aceite_lgpd=True,
+            aceite_normas=True
         )
         db.add(p1)
         await db.commit()
@@ -149,7 +159,11 @@ async def listar_projetos(tag: str | None = Query(None), db: AsyncSession = Depe
             executavel_navegador=1,
             build_path="sandbox_builds/mossvale",
             poster_path=None,
-            status="Ativo"
+            status="Ativo",
+            github_url=None,
+            codigo_aberto=False,
+            aceite_lgpd=True,
+            aceite_normas=True
         )
         db.add(p2)
         await db.commit()
@@ -195,6 +209,11 @@ async def listar_projetos(tag: str | None = Query(None), db: AsyncSession = Depe
             "inspection_reason": getattr(p, 'inspection_reason', None),
             "inspection_message": getattr(p, 'inspection_message', None),
             "inspection_reply": getattr(p, 'inspection_reply', None),
+            # --- NOVOS CAMPOS NA RESPOSTA ---
+            "github_url": getattr(p, 'github_url', None),
+            "codigo_aberto": getattr(p, 'codigo_aberto', False),
+            "aceite_lgpd": getattr(p, 'aceite_lgpd', False),
+            "aceite_normas": getattr(p, 'aceite_normas', False),
             "comments_count": len(comentarios_formatados),
             "comentarios": comentarios_formatados
         })
@@ -211,11 +230,25 @@ async def criar_projeto_root(
     executavel_navegador: int | str = Form(0),
     campaign_id: int | None = Form(None),
     members: str = Form(""),
+    github_url: str | None = Form(None),
+    codigo_aberto: int | str | bool = Form(False),
+    aceite_lgpd: int | str | bool = Form(False),
+    aceite_normas: int | str | bool = Form(False),
     poster: UploadFile | None = None,
     build_file: UploadFile | None = None,
     db: AsyncSession = Depends(database.get_db),
     token: str | None = Depends(oauth2_scheme)
 ):
+    # Validação obrigatória dos checkboxes de conformidade (LGPD e Normas)
+    lgpd_bool = True if str(aceite_lgpd).lower() in ["true", "1", "on", "yes"] else False
+    normas_bool = True if str(aceite_normas).lower() in ["true", "1", "on", "yes"] else False
+
+    if not lgpd_bool or not normas_bool:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="É obrigatório aceitar os termos da LGPD e as Normas e Garantias da Ludarium para publicar o projeto."
+        )
+
     utilizador_email = "user1@user.com"
     if token:
         try:
@@ -225,6 +258,7 @@ async def criar_projeto_root(
             pass
 
     exec_nav_int = 1 if str(executavel_navegador).lower() in ["true", "1", "on"] else 0
+    codigo_aberto_bool = True if str(codigo_aberto).lower() in ["true", "1", "on", "yes"] else False
 
     poster_path = None
     if poster:
@@ -281,7 +315,11 @@ async def criar_projeto_root(
         user_id=utilizador_email,
         campaign_id=campaign_id,
         members=members,
-        status="Ativo"
+        status="Ativo",
+        github_url=github_url if github_url else None,
+        codigo_aberto=codigo_aberto_bool,
+        aceite_lgpd=lgpd_bool,
+        aceite_normas=normas_bool
     )
 
     db.add(novo_projeto)
@@ -310,6 +348,10 @@ async def criar_projeto_root(
         "inspection_reason": getattr(novo_projeto, 'inspection_reason', None),
         "inspection_message": getattr(novo_projeto, 'inspection_message', None),
         "inspection_reply": getattr(novo_projeto, 'inspection_reply', None),
+        "github_url": novo_projeto.github_url,
+        "codigo_aberto": novo_projeto.codigo_aberto,
+        "aceite_lgpd": novo_projeto.aceite_lgpd,
+        "aceite_normas": novo_projeto.aceite_normas,
         "comments_count": 0,
         "comentarios": []
     }
@@ -372,6 +414,10 @@ async def inspecionar_projeto(
         "inspection_reason": p.inspection_reason,
         "inspection_message": p.inspection_message,
         "inspection_reply": p.inspection_reply,
+        "github_url": getattr(p, 'github_url', None),
+        "codigo_aberto": getattr(p, 'codigo_aberto', False),
+        "aceite_lgpd": getattr(p, 'aceite_lgpd', False),
+        "aceite_normas": getattr(p, 'aceite_normas', False),
         "comments_count": len(comentarios_formatados),
         "comentarios": comentarios_formatados
     }
@@ -438,6 +484,10 @@ async def avaliar_projeto_estrela(project_id: int, db: AsyncSession = Depends(da
         "inspection_reason": getattr(p, 'inspection_reason', None),
         "inspection_message": getattr(p, 'inspection_message', None),
         "inspection_reply": getattr(p, 'inspection_reply', None),
+        "github_url": getattr(p, 'github_url', None),
+        "codigo_aberto": getattr(p, 'codigo_aberto', False),
+        "aceite_lgpd": getattr(p, 'aceite_lgpd', False),
+        "aceite_normas": getattr(p, 'aceite_normas', False),
         "comments_count": len(comentarios_formatados),
         "comentarios": comentarios_formatados
     }
@@ -476,6 +526,10 @@ async def obter_projeto(project_id: int, db: AsyncSession = Depends(database.get
         "inspection_reason": getattr(p, 'inspection_reason', None),
         "inspection_message": getattr(p, 'inspection_message', None),
         "inspection_reply": getattr(p, 'inspection_reply', None),
+        "github_url": getattr(p, 'github_url', None),
+        "codigo_aberto": getattr(p, 'codigo_aberto', False),
+        "aceite_lgpd": getattr(p, 'aceite_lgpd', False),
+        "aceite_normas": getattr(p, 'aceite_normas', False),
         "comments_count": len(comentarios_formatados),
         "comentarios": comentarios_formatados
     }
@@ -573,6 +627,10 @@ async def atualizar_projeto(
         p.campaign_id = projeto_dados.campaign_id
     if projeto_dados.members is not None:
         p.members = projeto_dados.members
+    if projeto_dados.github_url is not None:
+        p.github_url = projeto_dados.github_url
+    if projeto_dados.codigo_aberto is not None:
+        p.codigo_aberto = projeto_dados.codigo_aberto
     
     if hasattr(projeto_dados, 'inspection_reply') and projeto_dados.inspection_reply is not None:
         p.inspection_reply = projeto_dados.inspection_reply
@@ -604,6 +662,10 @@ async def atualizar_projeto(
         "inspection_reason": getattr(p, 'inspection_reason', None),
         "inspection_message": getattr(p, 'inspection_message', None),
         "inspection_reply": getattr(p, 'inspection_reply', None),
+        "github_url": getattr(p, 'github_url', None),
+        "codigo_aberto": getattr(p, 'codigo_aberto', False),
+        "aceite_lgpd": getattr(p, 'aceite_lgpd', False),
+        "aceite_normas": getattr(p, 'aceite_normas', False),
         "comments_count": len(comentarios_formatados),
         "comentarios": comentarios_formatados
     }
@@ -664,6 +726,10 @@ async def alternar_favorito(project_id: int, db: AsyncSession = Depends(database
         "inspection_reason": getattr(p, 'inspection_reason', None),
         "inspection_message": getattr(p, 'inspection_message', None),
         "inspection_reply": getattr(p, 'inspection_reply', None),
+        "github_url": getattr(p, 'github_url', None),
+        "codigo_aberto": getattr(p, 'codigo_aberto', False),
+        "aceite_lgpd": getattr(p, 'aceite_lgpd', False),
+        "aceite_normas": getattr(p, 'aceite_normas', False),
         "comments_count": len(comentarios_formatados),
         "comentarios": comentarios_formatados
     }

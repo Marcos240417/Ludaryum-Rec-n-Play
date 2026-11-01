@@ -1,4 +1,6 @@
+# Caminho: auth-service/main.py
 import os
+import httpx
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -9,7 +11,7 @@ import bcrypt
 from datetime import datetime, timedelta
 import math
 from jose import JWTError, jwt
-from user_agents import parse # pip install user-agents
+from user_agents import parse
 import models, database, schemas
 
 SECRET_KEY = "ludarium_super_secret_key_jwt"
@@ -17,6 +19,29 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+
+# --- FUNÇÃO AUXILIAR DE GEOLOCALIZAÇÃO EXATA POR IP ---
+async def obter_localizacao_por_ip(ip: str) -> str:
+    """Consulta uma API de geolocalização baseada no IP para retornar cidade, região e país exatos."""
+    if not ip or ip in ["127.0.0.1", "localhost", "::1"] or ip.startswith("192.168.") or ip.startswith("10."):
+        return "Rede Local / Localhost (Brasil)"
+    
+    try:
+        async with httpx.AsyncClient(timeout=2.5) as client:
+            response = await client.get(f"https://ipapi.co/{ip}/json/")
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("error"):
+                    return f"Brasil / Local (IP: {ip})"
+                
+                cidade = data.get("city", "Desconhecida")
+                regiao = data.get("region", "Desconhecida")
+                pais = data.get("country_name", "Brasil")
+                return f"{cidade} - {regiao}, {pais}"
+    except Exception:
+        pass
+    
+    return f"Brasil / Local (IP: {ip})"
 
 # --- CICLO DE VIDA (LIFESPAN) ASSÍNCRONO GLOBAL ---
 @asynccontextmanager
@@ -26,9 +51,11 @@ async def lifespan(app: FastAPI):
         await conn.run_sync(models.Base.metadata.create_all)
         await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR DEFAULT 'Ativo (BD)';"))
         await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS suspended_until TIMESTAMP;"))
+        await conn.execute(text("ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS severidade VARCHAR DEFAULT 'BAIXA';"))
+        await conn.execute(text("ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS detalhes_payload TEXT;"))
     yield
 
-app = FastAPI(title="Ludarium Auth Service", version="1.1.0", lifespan=lifespan)
+app = FastAPI(title="Ludarium Auth Service", version="1.4.0", lifespan=lifespan)
 
 # Configuração de CORS global e permissiva para comunicação entre microsserviços e painéis
 app.add_middleware(
@@ -80,7 +107,7 @@ async def obter_utilizador_atual(token: str = Depends(oauth2_scheme), db: AsyncS
 
 @app.get("/")
 def raiz():
-    return {"message": "Auth Service a funcionar com Telemetria e Dossiê de Cibersegurança!"}
+    return {"message": "Auth Service a funcionar com Telemetria, Dossiê de Cibersegurança e LGPD Opt-In!"}
 
 @app.post("/register", response_model=schemas.UserResponse, status_code=status.HTTP_201_CREATED)
 async def registar_utilizador(user: schemas.UserCreate, db: AsyncSession = Depends(database.get_db)):
@@ -97,15 +124,53 @@ async def registar_utilizador(user: schemas.UserCreate, db: AsyncSession = Depen
     db.add(novo_utilizador)
     await db.commit()
     await db.refresh(novo_utilizador)
+
+    # Registar o consentimento LGPD Opt-In associado ao novo utilizador
+    novo_consentimento = models.UserConsent(
+        user_id=novo_utilizador.id,
+        analytics_opt_in=user.analytics_opt_in
+    )
+    db.add(novo_consentimento)
+    await db.commit()
+
     return novo_utilizador
 
 @app.post("/login")
 async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(database.get_db)):
+    ip_client = request.headers.get("x-forwarded-for") or (request.client.host if request.client else "127.0.0.1")
+    user_agent_string = request.headers.get("user-agent", "")
+    parsed_ua = parse(user_agent_string)
+
+    # Obter localização geográfica exata por IP de forma assíncrona
+    localizacao_exata = await obter_localizacao_por_ip(ip_client)
+
     result = await db.execute(
         select(models.User).where((models.User.username == form_data.username) | (models.User.email == form_data.username))
     )
     user = result.scalar_one_or_none()
+    
     if not user or not bcrypt.checkpw(form_data.password.encode('utf-8'), user.hashed_password.encode('utf-8')):
+        # --- RECOLHA FORENSE DE TENTATIVA DE INVASÃO / BRUTE-FORCE ---
+        tipo_disp = "Desconhecido"
+        if parsed_ua.is_mobile: tipo_disp = "Telemóvel (Mobile)"
+        elif parsed_ua.is_tablet: tipo_disp = "Tablet"
+        elif parsed_ua.is_pc: tipo_disp = "Desktop"
+
+        log_intrusao = models.AuditLog(
+            user_id=user.id if user else None,
+            username=form_data.username,
+            ip_address=ip_client,
+            user_agent=user_agent_string,
+            dispositivo=tipo_disp,
+            sistema_operacional=f"{parsed_ua.os.family} {parsed_ua.os.version_string}".strip(),
+            navegador=f"{parsed_ua.browser.family} {parsed_ua.browser.version_string}".strip(),
+            localizacao=localizacao_exata,
+            acao="TENTATIVA_INTRUSAO_FALHA_LOGIN",
+            severidade="ALTA",
+            detalhes_payload=f"Falha de autenticação para o identificador: {form_data.username}"
+        )
+        db.add(log_intrusao)
+        await db.commit()
         raise HTTPException(status_code=400, detail="Utilizador ou senha incorretos.")
 
     # Validação rigorosa de suspensão no momento do login com conversão segura
@@ -123,12 +188,7 @@ async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends
         user.suspended_until = None
         await db.commit()
 
-    # --- RECOLHA DE TELEMETRIA E AUDITORIA FORENSE NO LOGIN ---
-    user_agent_string = request.headers.get("user-agent", "")
-    parsed_ua = parse(user_agent_string)
-    
-    ip_client = request.headers.get("x-forwarded-for") or (request.client.host if request.client else "127.0.0.1")
-    
+    # --- RECOLHA DE TELEMETRIA E AUDITORIA FORENSE NO LOGIN COM SUCESSO ---
     tipo_disp = "Desktop"
     if parsed_ua.is_mobile:
         tipo_disp = "Telemóvel (Mobile)"
@@ -143,12 +203,13 @@ async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends
         dispositivo=tipo_disp,
         sistema_operacional=f"{parsed_ua.os.family} {parsed_ua.os.version_string}".strip(),
         navegador=f"{parsed_ua.browser.family} {parsed_ua.browser.version_string}".strip(),
-        localizacao="Brasil / Local (Detectado por IP)",
-        acao="LOGIN_SUCESSO"
+        localizacao=localizacao_exata,
+        acao="LOGIN_SUCESSO",
+        severidade="BAIXA",
+        detalhes_payload="Autenticação efetuada com sucesso."
     )
     db.add(novo_log)
     await db.commit()
-    # ----------------------------------------------------------
 
     access_token = criar_token_acesso(data={"sub": user.username})
     return {"access_token": access_token, "token_type": "bearer"}
@@ -207,7 +268,6 @@ async def listar_todos_utilizadores(db: AsyncSession = Depends(database.get_db))
 
 @app.delete("/users/{user_id}")
 async def excluir_utilizador_definitivamente(user_id: int, db: AsyncSession = Depends(database.get_db)):
-    """Exclui permanentemente o utilizador. Graças ao CASCADE, todos os logs de auditoria e dados associados são limpos de imediato para poupar memória."""
     result = await db.execute(select(models.User).where(models.User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
@@ -221,11 +281,15 @@ async def excluir_utilizador_definitivamente(user_id: int, db: AsyncSession = De
 async def exportar_dossie_ciberseguranca(db: AsyncSession = Depends(database.get_db)):
     """Gera o Dossiê Completo de Cibersegurança e Auditoria Forense para apresentação no Painel Admin."""
     
-    # 1. Métricas Executivas
     total_users_res = await db.execute(select(func.count(models.User.id)))
     total_utilizadores = total_users_res.scalar() or 0
 
-    # 2. Telemetria Forense (Últimos 200 acessos)
+    # Contagem de tentativas de intrusão bloqueadas
+    intrusao_res = await db.execute(
+        select(func.count(models.AuditLog.id)).where(models.AuditLog.severidade.in_(["ALTA", "CRITICA"]))
+    )
+    tentativas_bloqueadas = intrusao_res.scalar() or 0
+
     logs_res = await db.execute(select(models.AuditLog).order_by(models.AuditLog.timestamp.desc()).limit(200))
     logs_acesso = logs_res.scalars().all()
 
@@ -238,15 +302,61 @@ async def exportar_dossie_ciberseguranca(db: AsyncSession = Depends(database.get
         "resumo_executivo": {
             "total_utilizadores_registados": total_utilizadores,
             "total_logs_forenses_registados": len(logs_acesso),
-            "status_sistema": "Operacional e Monitorizado"
+            "status_sistema": "Operacional e Protegido"
         },
         "moderacao_foruns": [
-            {"aviso": "Moderação ativa em tempo real"}
+            {"aviso": "Moderação ativa em tempo real contra ataques e acessos não autorizados"}
         ],
-        "forense_telemetria_acessos": logs_acesso
+        "forense_telemetria_acessos": logs_acesso,
+        "tentativas_intrusao_bloqueadas": tentativas_bloqueadas
     }
 
     return dossie
+
+# ==========================================
+# DOSSIÊ DE CONFORMIDADE LGPD (PAINEL ADMIN)
+# ==========================================
+@app.get("/api/admin/dossier")
+async def obter_dossie_lgpd_admin(db: AsyncSession = Depends(database.get_db), current_user: models.User = Depends(obter_utilizador_atual)):
+    isAdmin = (current_user.username == 'admin' or current_user.email == 'admin@ludarium.com' or getattr(current_user, 'is_admin', False))
+    if not isAdmin:
+        raise HTTPException(status_code=403, detail="Acesso restrito exclusivamente a administradores.")
+
+    total_users_res = await db.execute(select(func.count(models.User.id)))
+    total_users = total_users_res.scalar() or 0
+
+    opt_in_res = await db.execute(select(func.count(models.UserConsent.user_id)).where(models.UserConsent.analytics_opt_in == True))
+    opt_in_count = opt_in_res.scalar() or 0
+
+    opt_rate = round((opt_in_count / total_users * 100), 1) if total_users > 0 else 0.0
+
+    stmt = (
+        select(models.User, models.UserConsent)
+        .outerjoin(models.UserConsent, models.User.id == models.UserConsent.user_id)
+        .order_by(models.User.id.desc())
+        .limit(20)
+    )
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    recent_logs = []
+    for user, consent in rows:
+        recent_logs.append({
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "analytics_opt_in": 1 if (consent and consent.analytics_opt_in) else 0,
+            "consent_date": consent.consent_date.isoformat() if (consent and consent.consent_date) else "N/A"
+        })
+
+    return {
+        "kpis": {
+            "total_users": total_users,
+            "opt_in_count": opt_in_count,
+            "opt_rate": opt_rate
+        },
+        "recent_logs": recent_logs
+    }
 
 @app.patch("/users/{user_id}/status")
 async def alterar_status_utilizador(user_id: int, dados: dict, db: AsyncSession = Depends(database.get_db)):
@@ -355,3 +465,19 @@ async def apagar_mensagem_privada(
     await db.delete(msg)
     await db.commit()
     return {"message": "Mensagem excluída com sucesso!"}
+
+@app.delete("/admin/dossie-forense/limpar")
+async def limpar_historico_acessos(db: AsyncSession = Depends(database.get_db), current_user: models.User = Depends(obter_utilizador_atual)):
+    # Validação rigorosa de Administrador
+    isAdmin = (current_user.username == 'admin' or current_user.email == 'admin@ludarium.com' or getattr(current_user, 'is_admin', False))
+    if not isAdmin:
+        raise HTTPException(status_code=403, detail="Acesso restrito exclusivamente a administradores.")
+
+    try:
+        # Executa a limpeza de todos os registos da tabela de audit_logs
+        await db.execute(text("DELETE FROM audit_logs;"))
+        await db.commit()
+        return {"message": "Histórico de acessos e dossiê forense limpo com sucesso!"}
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Erro ao limpar histórico forense: {str(e)}")

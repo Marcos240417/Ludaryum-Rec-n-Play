@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 from database import Base
 
@@ -25,6 +25,12 @@ class ProjectModel(Base):
     inspection_message = Column(String, nullable=True)
     inspection_reply = Column(String, nullable=True)
 
+    # --- CAMPOS: GITHUB, CÓDIGO ABERTO E COMPLIANCE ---
+    github_url = Column(String, nullable=True)
+    codigo_aberto = Column(Boolean, default=False)
+    aceite_lgpd = Column(Boolean, default=False)
+    aceite_normas = Column(Boolean, default=False)
+
     comentarios = relationship("ProjectCommentModel", back_populates="projeto", cascade="all, delete-orphan")
 
 class ProjectCommentModel(Base):
@@ -37,3 +43,7 @@ class ProjectCommentModel(Base):
     conteudo = Column(Text)
 
     projeto = relationship("ProjectModel", back_populates="comentarios")
+
+# --- ALIASES DE COMPATIBILIDADE PARA O ECOSSISTEMA ---
+Project = ProjectModel
+ProjectComment = ProjectCommentModel
