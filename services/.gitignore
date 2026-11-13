@@ -35,6 +35,13 @@ sandbox_posters/
 *.sqlite
 *.db
 
+# Multimédia pesada e assets locais grandes
+services/project-service/home.frontend/bomberman-fundo.mp4
+
+# Cloudflare Tunnels (Ficheiros de registo e tokens locais)
+.cloudflared/
+*.pem
+
 # IDEs e Editores de Código
 .vscode/
 .idea/

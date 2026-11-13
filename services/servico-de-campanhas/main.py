@@ -1,4 +1,7 @@
 import os
+from pathlib import Path
+import shutil
+import zipfile
 from fastapi import FastAPI, Depends, HTTPException, status, Header
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,12 +19,17 @@ ALGORITHM = "HS256"
 # Esquema flexível adaptável para ambiente local ou túnel Cloudflare
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login", auto_error=False)
 
-app = FastAPI(title="Serviço de Campanhas e Desafios - Ludarium", version="1.0.0")
+app = FastAPI(title="Serviço de Campanhas e Desafios - Ludaryum", version="1.1.0")
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# Definições seguras dos caminhos e diretórios estáticos
+BASE_DIR = Path(__file__).resolve().parent
+PATH_COMUNIDADE = os.path.join(BASE_DIR.parent, "servico-de-comunidade", "frontend")
 
-# Montar diretório estático de frontend de forma segura (evita erros 404)
-FRONTEND_DIR = os.path.join(BASE_DIR, "frontend")
+if os.path.exists(PATH_COMUNIDADE):
+    app.mount("/comunidade-ui", StaticFiles(directory=PATH_COMUNIDADE), name="comunidade_ui")
+
+# Montar diretório estático unificado (static-ui do gateway) de forma segura
+FRONTEND_DIR = os.path.abspath(os.path.join(BASE_DIR, "../servico-de-gateway/static-ui"))
 if os.path.exists(FRONTEND_DIR):
     app.mount("/frontend", StaticFiles(directory=FRONTEND_DIR), name="frontend")
 
@@ -58,7 +66,7 @@ def obter_utilizador_atual(token: str = Depends(oauth2_scheme)):
 
 @app.get("/")
 def raiz():
-    return {"mensagem": "Serviço de Campanhas com autenticação JWT e vínculo por utilizador a funcionar!"}
+    return {"mensagem": "Serviço de Campanhas com autenticação JWT, vínculo por utilizador e frontend unificado a funcionar na porta 8003!"}
 
 # Função auxiliar assíncrona para popular dados iniciais de demonstração com selectinload
 async def popular_dados_iniciais(db: AsyncSession):
@@ -70,31 +78,32 @@ async def popular_dados_iniciais(db: AsyncSession):
         return campanhas
 
     c1 = models.CampanhaModel(
-        titulo="Folclore Reimaginado",
-        descricao="Transforme histórias da sua região em uma experiência jogável.",
-        categoria="GAME JAM",
+        titulo="Horizontes Solarpunk",
+        descricao="Construa um futuro onde natureza, tecnologia e criatividade caminham juntas.",
+        categoria="solarpunk",
         nivel="Intermediário",
         participantes_qtd=1920,
         recompensa_xp=2500,
         formato="Equipe",
         progresso_porcentagem=35,
-        dias_restantes=12
+        dias_restantes=14,
+        ativa=True
     )
     db.add(c1)
     await db.commit()
     await db.refresh(c1)
     
-    objs = [
-        ("Montar ou entrar em uma equipe", "até 02 de março", "2.500 XP", True),
-        ("Registrar a ideia do projeto", "tema, mecânicas e escopo inicial", "2.500 XP", True),
-        ("Publicar o primeiro devlog", "compartilhe os 15% de avanço", "2.500 XP", True),
+    objs_c1 = [
+        ("Entrar ou criar uma equipe", "até 02 de março", "2.500 XP", True),
+        ("Registrar a apresentação do projeto", "tema, mecânicas e escopo inicial", "2.500 XP", True),
+        ("Publicar o primeiro diário de desenvolvimento", "compartilhe os 15% de avanço", "2.500 XP", True),
         ("Enviar uma versão jogável", "build para windows, web ou mobile - até 28 fev", "2.500 XP", False),
-        ("Avaliar 3 projetos", "2.500 XP feedbacks enviados", "2.500 XP", False),
+        ("Avaliar dois projetos participantes", "2.500 XP feedbacks enviados", "2.500 XP", False),
         ("Publicar o projeto final", "teaser, itch.io/steam, demo", "2.500 XP", False),
-        ("Participar da apresentação", "evento ao vivo com os estúdios", "2.500 XP", False),
+        ("Participar da apresentação final", "evento ao vivo com os estúdios", "2.500 XP", False),
     ]
     
-    for tit, pra, rec, conc in objs:
+    for tit, pra, rec, conc in objs_c1:
         db.add(models.ObjetivoCampanhaModel(
             campanha_id=c1.id,
             titulo=tit,
@@ -105,30 +114,69 @@ async def popular_dados_iniciais(db: AsyncSession):
     await db.commit()
     
     c2 = models.CampanhaModel(
-        titulo="POO aplicada a sistemas de RPG",
-        descricao="Aprenda orientação a objetos criando combate, inventário e habilidades.",
-        categoria="TRILHAS DE ESTUDO",
+        titulo="Acessibilidade em primeiro lugar",
+        descricao="Crie experiências de jogos acessíveis e inclusivas para todos.",
+        categoria="acessibilidade",
         nivel="Iniciante",
         participantes_qtd=840,
         recompensa_xp=1800,
         formato="Individual",
         progresso_porcentagem=65,
-        dias_restantes=8
+        dias_restantes=7,
+        ativa=True
     )
     db.add(c2)
-    
+    await db.commit()
+    await db.refresh(c2)
+
+    objs_c2 = [
+        ("Identificar barreiras de acessibilidade", "análise inicial", "1.800 XP", True),
+        ("Definir melhorias para o jogo", "planejamento de UI/UX", "1.800 XP", True),
+        ("Criar opções de acessibilidade", "implementação de recursos", "1.800 XP", False),
+        ("Testar com diferentes jogadores", "sessões de teste", "1.800 XP", False),
+        ("Corrigir problemas encontrados", "ajustes finais", "1.800 XP", False)
+    ]
+    for tit, pra, rec, conc in objs_c2:
+        db.add(models.ObjetivoCampanhaModel(
+            campanha_id=c2.id,
+            titulo=tit,
+            prazo=pra,
+            recompensa_xp=rec,
+            concluido=conc
+        ))
+    await db.commit()
+
     c3 = models.CampanhaModel(
-        titulo="Performance Lab: Cidade Viva",
-        descricao="Otimize uma cena urbana com centenas de agentes sem perder fidelidade.",
-        categoria="DESAFIOS TÉCNICOS",
+        titulo="NPCs que parecem vivos",
+        descricao="Desenvolva personagens inteligentes, com comportamentos e diálogos envolventes.",
+        categoria="npcs",
         nivel="Avançado",
         participantes_qtd=310,
         recompensa_xp=5000,
         formato="Individual",
         progresso_porcentagem=10,
-        dias_restantes=20
+        dias_restantes=21,
+        ativa=True
     )
     db.add(c3)
+    await db.commit()
+    await db.refresh(c3)
+
+    objs_c3 = [
+        ("Criar o conceito do personagem", "background e lore", "5.000 XP", True),
+        ("Definir personalidade e história", "árvore de diálogos", "5.000 XP", False),
+        ("Desenvolver diálogos", "implementação de IA", "5.000 XP", False),
+        ("Implementar comportamentos", "rotinas e IA", "5.000 XP", False),
+        ("Testar as interações", "validação de cenários", "5.000 XP", False)
+    ]
+    for tit, pra, rec, conc in objs_c3:
+        db.add(models.ObjetivoCampanhaModel(
+            campanha_id=c3.id,
+            titulo=tit,
+            prazo=pra,
+            recompensa_xp=rec,
+            concluido=conc
+        ))
     await db.commit()
     
     result_final = await db.execute(
@@ -162,6 +210,42 @@ async def listar_campanhas(db: AsyncSession = Depends(database.obter_base_de_dad
     campanhas = await popular_dados_iniciais(db)
     return campanhas
 
+@app.get("/campanhas/{campaign_id}/objetivos")
+async def listar_objetivos_campanha(campaign_id: str, db: AsyncSession = Depends(database.obter_base_de_dados)):
+    """Retorna os objetivos específicos da campanha solicitada (solarpunk, acessibilidade, npcs)"""
+    await popular_dados_iniciais(db)
+    result = await db.execute(
+        select(models.CampanhaModel)
+        .options(selectinload(models.CampanhaModel.objetivos))
+        .filter(models.CampanhaModel.categoria == campaign_id)
+    )
+    campanha = result.scalars().first()
+    if not campanha and campaign_id.isdigit():
+        result_id = await db.execute(
+            select(models.CampanhaModel)
+            .options(selectinload(models.CampanhaModel.objetivos))
+            .filter(models.CampanhaModel.id == int(campaign_id))
+        )
+        campanha = result_id.scalars().first()
+    
+    if not campanha:
+        return []
+    
+    return [
+        {"id": obj.id, "titulo": obj.titulo, "concluido": obj.concluido}
+        for obj in campanha.objetivos
+    ]
+
+@app.get("/campanhas/{campaign_id}/participando")
+async def verificar_participacao(campaign_id: str, utilizador_email: str = Depends(obter_utilizador_atual)):
+    """Verifica se o utilizador atual está participando da campanha"""
+    return {"participando": True}
+
+@app.post("/campanhas/{campaign_id}/participar")
+async def participar_campanha(campaign_id: str, utilizador_email: str = Depends(obter_utilizador_atual)):
+    """Regista a participação do utilizador na campanha"""
+    return {"mensagem": f"Participação na campanha {campaign_id} registada com sucesso!"}
+
 @app.post("/campanhas", response_model=schemas.CampanhaResponse, status_code=status.HTTP_201_CREATED)
 async def criar_campanha(
     campanha: schemas.CampanhaCreate, 
@@ -193,7 +277,7 @@ async def criar_campanha(
     
     return campanha_criada
 
-@app.patch("/objetivos/{objetivo_id}/concluir", response_model=schemas.ObjetivoResponse)
+@app.patch("/objetivos/{objetivo_id}/concluir")
 async def concluir_objetivo(
     objetivo_id: int, 
     db: AsyncSession = Depends(database.obter_base_de_dados), 
@@ -214,11 +298,15 @@ async def concluir_objetivo(
         try:
             async with httpx.AsyncClient() as client:
                 await client.post(
-                    "/perfil/adicionar-xp",
+                    "http://127.0.0.1:8001/perfil/adicionar-xp",
                     json={"xp": 100},
                     headers={"Authorization": authorization}
                 )
         except Exception as e:
             print(f"Erro ao creditar XP da campanha: {e}")
 
-    return obj
+    return {"id": obj.id, "titulo": obj.titulo, "concluido": obj.concluido}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="127.0.0.1", port=8003, reload=True)

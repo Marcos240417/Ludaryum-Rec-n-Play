@@ -1,91 +1,292 @@
+
 <!DOCTYPE html>
-<html lang="pt">
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ludarium - Entrar</title>
-    <link rel="stylesheet" href="login.css">
+
+    <title>Ludaryum | Crie, Compartilhe, Evolua</title>
+
+    <!-- Conexão com o Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+    <!-- Fonte principal -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+        rel="stylesheet"
+    >
+
+    <!-- Fonte futurista da marca -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&display=swap"
+        rel="stylesheet"
+    >
+
+    <!-- Estilos da página -->
+    <link rel="stylesheet" href="./login.css">
+
+    <!-- JavaScript da página -->
+    <script src="./login.js" defer></script>
 </head>
+
 <body>
-    <!-- Container global para mensagens Toast flutuantes -->
-    <div id="toastContainer" style="position: fixed; bottom: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 10px;"></div>
+    <main class="login-page">
 
-    <div id="loginScreen">
-        <div class="login-container">
-            <div class="login-hero">
-                <div class="brand-header">
-                    <span>L</span>
-                    LUDARIUM
-                </div>
-                <div class="login-tags-top">CRIE • COMPARTILHE • EVOLUA</div>
-                <h1>Todo grande jogo começou com uma ideia.</h1>
-                <p>Entre na comunidade onde projetos ganham colaboradores, desafios viram experiência e cada conquista conta a sua história.</p>
-                
-                <div class="hero-stats">
-                    <div class="stat-item">
-                        <div class="stat-number">18,4k</div>
-                        <div class="stat-label">Criadores</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-number">6,2k</div>
-                        <div class="stat-label">Projetos</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-number">142</div>
-                        <div class="stat-label">Campanhas</div>
-                    </div>
+        <!-- FUNDO COM GAMEPLAY -->
+        <video class="background-video" autoplay muted loop playsinline>
+            <source src=bomberman-fundo.mp4 type="video/mp4">
+        </video>
+
+        <!-- APRESENTAÇÃO DA LUDARYUM -->
+        <section class="presentation">
+
+            <header class="brand">
+    <span class="brand-moon" aria-hidden="true"></span>
+
+    <span
+        id="ludarium-sign"
+        class="logo-sign border-glow-text"
+        data-text="LUDARYUM"
+    >LUDARYUM</span>
+</header>
+
+            <!-- TÍTULO PRINCIPAL -->
+            <h1 id="main-title" class="glow-title">
+                <span
+                    class="title-line border-glow-text"
+                    data-text="Todo grande jogo"
+                >Todo grande jogo</span>
+
+                <span
+                    class="title-line border-glow-text"
+                    data-text="começou com uma ideia."
+                >começou com uma ideia.</span>
+            </h1>
+
+            <p class="intro border-glow-text" data-text="Entre na comunidade onde projetos ganham colaboradores, desafios viram experiência e cada conquista conta a sua história."></p>
+                Entre na comunidade onde projetos ganham colaboradores,
+                desafios viram experiência e cada conquista conta a sua história.
+            </p>
+
+            <!-- ESTATÍSTICAS -->
+            <div class="statistics">
+                <div class="stat">
+                    <strong>18,4k</strong>
+                    <span>CRIADORES</span>
                 </div>
 
-                <div class="conquista-card">
-                    <div class="conquista-icon">🏆</div>
-                    <div class="conquista-text">
-                        <div class="conquista-title">Conquista desbloqueada</div>
-                        <div class="conquista-desc">Sua próxima ideia começa aqui</div>
-                    </div>
+                <div class="stat">
+                    <strong>6,2k</strong>
+                    <span>PROJETOS</span>
+                </div>
+
+                <div class="stat">
+                    <strong>142</strong>
+                    <span>CAMPANHAS</span>
                 </div>
             </div>
 
+            <!-- CONQUISTA -->
+            <div class="achievement">
+                <div class="achievement-icon">♜</div>
+
+                <div>
+                    <span>CONQUISTA DESBLOQUEADA</span>
+                    <strong>Sua próxima ideia começa aqui</strong>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- ÁREA DE LOGIN -->
+        <section class="login-area">
             <div class="login-card">
-                <h3 id="formTitle">Continue construindo.</h3>
-                <p class="subtitle" id="formSubtitle">Acesse seu perfil, projetos e jornadas em andamento.</p>
-                
-                <div id="authFormContainer">
-                    <div id="usernameFieldContainer" style="display: none;">
-                        <label for="regUsername">NOME DE UTILIZADOR</label>
-                        <input type="text" id="regUsername" placeholder="Ex.: dev_indie" autocomplete="username">
+
+                <div class="welcome-label">
+                    BEM-VINDO DE VOLTA
+                </div>
+
+                <h2>Continue construindo.</h2>
+
+                <p class="login-description">
+                    Acesse seu perfil, projetos e jornadas em andamento.
+                </p>
+
+                <form id="login-form">
+
+                    <!-- USUÁRIO -->
+                    <div class="form-group">
+                        <label for="username">USUÁRIO</label>
+
+                        <div class="input-wrapper">
+                            <span class="field-icon">👤</span>
+
+                            <input
+                                type="text"
+                                id="username"
+                                name="username"
+                                placeholder="Digite seu usuário"
+                                
+                                autocomplete="username"
+                                required
+                            >
+                        </div>
                     </div>
 
-                    <label id="labelUserEmail" for="loginUser">UTILIZADOR OU EMAIL</label>
-                    <input type="text" id="loginUser" placeholder="Ex.: admin ou email@teste.com" autocomplete="email">
+                    <!-- SENHA -->
+                    <div class="form-group">
+                        <label for="password">SENHA</label>
+
+                        <div class="input-wrapper">
+                            <span class="field-icon">🔒</span>
+
+                            <input
+                                type="password"
+                                id="password"
+                                name="password"
+                                placeholder="Digite sua senha"
+                                
+                                autocomplete="current-password"
+                                required
+                            >
+
+                            <button
+                                type="button"
+                                id="toggle-password"
+                                class="show-password"
+                            >MOSTRAR</button>
+                        </div>
+                    </div>
+
+                    <!-- OPÇÕES DE ACESSO -->
+                    <div class="form-options">
+                        <label class="remember">
+                            <input
+                                type="checkbox"
+                                id="remember"
+                                checked
+                            >
+                            <span>Manter conectado</span>
+                        </label>
+
+                        <button
+                            type="button"
+                            class="forgot-password"
+                        >Esqueci minha senha</button>
+                    </div>
+
+                    <!-- BOTÃO DE ENTRADA -->
                     
-                    <label for="loginPass">SENHA</label>
-                    <input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password">
+<button
+    type="submit"
+    class="login-button"
+>
+    ENTRAR NA LUDARYUM <span>›</span>
+</button>
+
+
                     
-                    <div id="suggestionsBox" class="suggestions-box" style="display: none; margin-top: 10px; padding: 10px; background: rgba(124, 58, 237, 0.1); border: 1px solid #7c3aed; border-radius: 6px;">
-                        <p class="suggestions-title" style="font-size: 0.85rem; color: #d8b4fe; margin-bottom: 6px;">⚠️ Este utilizador já existe. Sugestões disponíveis:</p>
-                        <div id="suggestionsList" class="suggestions-list" style="display: flex; flex-wrap: wrap; gap: 6px;"></div>
-                    </div>
+<!-- LINK PARA CADASTRO -->
+<div class="register-prompt">
+    <span>Ainda não tem cadastro?</span>
+    <button type="button" id="abrir-cadastro">
+        Cadastre-se aqui!
+    </button>
+</div>
 
-                    <button class="btn-primary" id="authBtnAction" onclick="executarAcaoAuth()" style="margin-top: 15px; width: 100%;">ENTRAR NA LUDARIUM →</button>
-                </div>
 
-                <div class="auth-toggle-box" style="margin-top: 20px; text-align: center;">
-                    <span id="toggleText">Ainda não tem conta?</span>
-                    <a href="#" id="toggleLink" onclick="alternarModoAuth(event)" style="color: var(--accent); text-decoration: none; font-weight: bold; margin-left: 5px;">Criar uma conta</a>
-                </div>
+                    
 
-                <div class="demo-divider" style="margin: 20px 0; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.1); line-height: 0.1em;"><span style="background: var(--bg-card, #1e1b4b); padding: 0 10px; color: var(--text-muted); font-size: 0.8rem;">Acesso Demonstrativo</span></div>
+                    <!-- O acesso demonstrativo foi removido. -->
 
-                <div class="demo-profile-box" style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); padding: 10px 15px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
-                    <div>
-                        <div style="font-size: 0.7rem; color: var(--text-muted);">PERFIL ADMIN</div>
-                        <div class="profile-name" style="font-weight: 600; font-size: 0.9rem;">admin / admin</div>
-                    </div>
-                    <button onclick="preencherAdminDemo()" style="background: var(--accent); border: none; color: #fff; padding: 6px 12px; border-radius: 4px; font-size: 0.75rem; cursor: pointer; font-weight: bold;">Usar</button>
-                </div>
+                    <p class="legal">
+    Ao entrar, você concorda com os
+    <a href="termos-de-uso.html" class="terms-link" target="_blank">
+        Termos da Comunidade
+    </a>
+    e a
+    <a href="politica-de-privacidade.html" class="terms-link" target="_blank">
+        Política de Privacidade
+    </a>.
+</p>
+                    <p
+                        id="login-message"
+                        class="login-message"
+                        role="status"
+                    ></p>
+
+                </form>
             </div>
+        </section>
+
+        <!-- DETALHES DECORATIVOS -->
+        <div class="background-code code-bottom">
+            <pre>git commit -m
+"transformar ideia em mundo"
+
+[main] ready_to_play</pre>
         </div>
+
+        
+<!-- JANELA DE CADASTRO -->
+<div class="cadastro-modal" id="cadastro-modal" aria-hidden="true">
+    <div class="cadastro-conteudo" role="dialog" aria-modal="true" aria-labelledby="titulo-cadastro">
+
+        <button type="button" class="fechar-cadastro" id="fechar-cadastro" aria-label="Fechar cadastro">
+            &times;
+        </button>
+
+        <h2 id="titulo-cadastro">CRIAR CONTA</h2>
+        <p>Entre para o universo Ludaryum.</p>
+
+        <form id="form-cadastro">
+            <label for="cadastro-nome">Nome de usuário</label>
+            <input type="text" id="cadastro-nome" placeholder="Como quer ser chamado?" required>
+
+            <label for="cadastro-email">E-mail</label>
+            <input type="email" id="cadastro-email" placeholder="seuemail@exemplo.com" required>
+
+            <label for="cadastro-senha">Senha</label>
+            <input type="password" id="cadastro-senha" placeholder="Crie uma senha" minlength="8" required>
+
+            <label for="cadastro-confirmar">Confirmar senha</label>
+            <input type="password" id="cadastro-confirmar" placeholder="Digite a senha novamente" minlength="8" required>
+
+            
+<div class="cadastro-aceites">
+    <label class="aceite-item">
+    <input type="checkbox" id="aceite-termos">
+    <span>
+        Li e aceito os
+        <a href="termos-de-uso.html" class="terms-link" target="_blank">
+            Termos de Uso
+        </a>.
+    </span>
+</label>
+
+<label class="aceite-item">
+    <input type="checkbox" id="aceite-privacidade">
+    <span>
+        Li a
+        <a href="politica-de-privacidade.html" class="terms-link" target="_blank">
+            Política de Privacidade
+        </a>.
+    </span>
+</label>
+</div>
+
+
+            <p id="cadastro-mensagem" class="cadastro-mensagem" role="status"></p>
+
+            <button type="submit" class="btn-cadastrar">CRIAR MINHA CONTA</button>
+        </form>
     </div>
-    <script src="login.js"></script>
+</div>
+
+
+        <div class="background-word">LUDARYUM</div>
+
+    </main>
 </body>
 </html>

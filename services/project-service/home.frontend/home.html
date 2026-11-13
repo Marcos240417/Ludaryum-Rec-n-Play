@@ -1,373 +1,673 @@
 <!DOCTYPE html>
-<html lang="pt">
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ludarium - Plataforma de Jogos Independentes</title>
+    <title>Ludaryum | Sua próxima aventura começa aqui</title>
+    
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+
     <link rel="stylesheet" href="home.css">
-    <style>
-        /* Estilo para ocultar elementos exclusivos de admin por padrão de forma estrita */
-        .admin-only {
-            display: none !important;
-        }
-    </style>
-    <link rel="icon" href="data:,">
 </head>
-<body onload="verificarSessaoDashboard()">
+<body>
 
-    <nav class="navbar">
-        <div class="nav-brand">
-            <span>L</span> LUDARYUM
+    
+<header class="navbar">
+    
+<a href="/home-ui/home.html" class="logo">
+    <span class="brand-moon" aria-hidden="true"></span>
+    <span class="logo-sign">LUDARYUM</span>
+</a>
+
+
+    
+
+<nav class="nav-links">
+    <a href="/home-ui/home.html">Explorar</a>
+    <a href="/comunidade-ui/comunidade.html">Comunidade</a>
+    <a href="/campanhas-ui/campanhas.html">Campanhas</a>
+</nav>
+
+
+
+    <div class="nav-search">
+        <span class="search-icon">⌕</span>
+        <input
+            type="search"
+            placeholder="Buscar projetos, pessoas e tags..."
+            aria-label="Buscar projetos, pessoas e tags"
+        >
+    </div>
+
+    
+
+
+<button class="btn-criar" type="button" id="abrir-modal-projeto">
+    <span>+</span> Desenvolver
+</button>
+
+<div class="nav-acoes">
+
+    <!-- Botão para alternar o tema -->
+    <button
+        type="button"
+        class="nav-icone"
+        id="alternar-tema"
+        aria-label="Alternar tema"
+        title="Alternar tema"
+    >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
+        </svg>
+    </button>
+
+    <!-- Botão de notificações -->
+    <button
+        type="button"
+        class="nav-icone"
+        id="abrir-notificacoes"
+        aria-label="Abrir notificações"
+        title="Notificações"
+    >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path>
+            <path d="M10 21h4"></path>
+        </svg>
+
+        <span class="notificacao-indicador" id="notificacao-indicador"></span>
+    </button>
+
+    <!-- Painel de notificações -->
+<div class="painel-notificacoes" id="painel-notificacoes">
+    <div class="notificacoes-cabecalho">
+        <h3>Notificações</h3>
+        <button type="button" id="fechar-notificacoes" aria-label="Fechar notificações">×</button>
+    </div>
+
+    <div class="lista-notificacoes" id="lista-notificacoes">
+        <p class="notificacoes-vazio">
+            Você ainda não tem notificações.
+        </p>
+    </div>
+</div>
+
+</div>
+
+
+
+    <div class="perfil-container">
+    
+<button
+    class="avatar"
+    type="button"
+    id="botao-perfil"
+    aria-label="Abrir menu do perfil"
+    aria-expanded="false"
+>
+    <span id="iniciais-perfil-menu">LM</span>
+</button>
+
+    
+<div class="menu-perfil" id="menu-perfil" hidden>
+
+    <div class="perfil-menu-cabecalho">
+        <div class="perfil-menu-avatar" id="avatar-menu-perfil">LM</div>
+
+        <div class="perfil-menu-info">
+            <strong class="perfil-menu-nome" id="nome-menu-perfil">Lia Monteiro</strong>
+            <span>Nível 24 · 3.420 XP</span>
         </div>
-        <ul class="nav-links">
-            <li><a href="/home-ui/home.html" class="active">Projetos</a></li>
-            <li><a href="/comunidade-ui/community.html">Comunidade</a></li>
-            <li><a href="/campanhas-ui/campanhas.html">Campanhas</a></li>
-            <li><a href="/perfil-ui/perfil.html">Perfil</a></li>
-            <!-- Oculto por padrão para utilizadores comuns -->
-            <li id="admin-menu-item" class="admin-only">
-                <a href="/admin-ui/admin.html" style="color: #f59e0b; font-weight: bold;">⚙️ Painel Admin</a>
-            </li>
-        </ul>
-        <div class="nav-actions">
-            <!-- Ícone de Notificações com Dropdown -->
-            <div class="nav-notifications" style="position: relative; margin-right: 15px; cursor: pointer; display: flex; align-items: center;" onclick="toggleNotificationsMenu()" title="Notificações">
-                <span style="font-size: 1.2rem;">🔔</span>
-                <span id="notificationBadge" style="position: absolute; top: -2px; right: -6px; background: #ef4444; color: white; font-size: 0.65rem; padding: 1px 5px; border-radius: 50%; display: none; font-weight: bold;">0</span>
-                <div id="notificationsDropdown" style="display: none; position: absolute; right: 0; top: 40px; width: 320px; background: #1a1829; border: 1px solid #7c3aed; border-radius: 8px; padding: 12px; z-index: 1000; box-shadow: 0 4px 15px rgba(0,0,0,0.6);">
-                    <h4 style="margin: 0 0 10px 0; font-size: 0.95rem; color: #d8b4fe; border-bottom: 1px solid #3f3d56; padding-bottom: 6px;">Centro de Notificações</h4>
-                    <div id="notificationsList" style="max-height: 250px; overflow-y: auto; font-size: 0.85rem; color: #fff;">
-                        <span style="color: #9ca3af;">A carregar notificações...</span>
-                    </div>
-                </div>
-            </div>
 
-            <div id="navUserProfile" style="display: flex; align-items: center; gap: 10px; margin-right: 15px; background: rgba(124, 58, 237, 0.1); border: 1px solid rgba(124, 58, 237, 0.3); padding: 5px 12px; border-radius: 20px;">
-                <div id="navUserAvatar" style="width: 32px; height: 32px; border-radius: 50%; background: #7c3aed; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.9rem; overflow: hidden;"></div>
-                <span id="navUsername" style="color: #d8b4fe; font-weight: 500; font-size: 0.95rem;"></span>
-            </div>
+        <span class="perfil-status" title="Online"></span>
+    </div>
 
-            <button class="btn-novo-projeto" onclick="abrirModalProjeto()">
-                <span>+</span> Novo projeto
-            </button>
-            <button class="btn-logout" onclick="fazerLogout()">Sair</button>
-        </div>
-    </nav>
-
-    <div class="main-content">
-        <!-- Barra de Pesquisa Unificada & Painel de Moderação (Controlado via script) -->
-        <div id="adminSearchBox" class="admin-only" style="background: #1a1829; border: 1px solid #7c3aed; padding: 20px; border-radius: 12px; margin-bottom: 25px;">
-            <h3 style="margin-top: 0; color: #d8b4fe; font-size: 1rem; margin-bottom: 12px;">🔍 Pesquisa de Projetos & Moderação</h3>
-            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                <input type="text" id="adminSearchInput" placeholder="Digite o nome do projeto (pesquisa instantânea) ou username/email para buscar utilizador..." oninput="filtrarProjetosTexto()" style="flex: 1; min-width: 280px; padding: 10px; background: #0f0e17; border: 1px solid #3f3d56; color: #fff; border-radius: 6px; outline: none; font-size: 0.9rem;">
-                <button onclick="pesquisarUtilizadorAdmin()" style="background: #7c3aed; color: #fff; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 0.85rem;">Buscar Utilizador</button>
-            </div>
-            <div id="adminSearchResult" style="margin-top: 15px; font-size: 0.9rem; color: #fff;"></div>
-        </div>
-
-        <div id="userMessagesBox" style="background: #1e1b2e; border: 1px solid #4c1d95; padding: 15px 20px; border-radius: 8px; margin-bottom: 25px; color: #fff;">
-            <h4 style="margin-top: 0; color: #d8b4fe; font-size: 0.95rem;">📬 Avisos e Mensagens Privadas da Administração</h4>
-            <div id="myMessagesList" style="font-size: 0.9rem; color: #e5e7eb;">
-                <span style="color: #9ca3af;">A carregar mensagens...</span>
-            </div>
-        </div>
-
-        <!-- Secção Reativa: Projetos do Utilizador Sob Inspeção (Aguardando Correção) -->
-        <div id="userInspectionAlertBox" style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 12px; padding: 20px; margin-bottom: 25px; display: none;">
-            <h3 style="color: #f59e0b; margin-top: 0; font-size: 1.1rem; display: flex; align-items: center; gap: 8px;">
-                ⏳ Os seus projetos sob inspeção (Aguardando Correção)
-            </h3>
-            <p style="font-size: 0.85rem; color: #d8b4fe; margin-bottom: 15px;">Estes projetos foram sinalizados pela administração. Corrija os pontos indicados para reativá-los:</p>
-            <div id="userInspectionProjectsList" style="display: flex; flex-direction: column; gap: 10px;">
-                <!-- Injetado dinamicamente via JS -->
-            </div>
-        </div>
-
-        <!-- Filtros Rápidos por Tags -->
-        <div class="filters-container" style="display: flex; gap: 15px; margin-bottom: 25px; align-items: center; flex-wrap: wrap; background: #1a1829; padding: 15px; border-radius: 12px; border: 1px solid #7c3aed;">
-            <span style="color: #d8b4fe; font-size: 0.9rem; font-weight: bold;">Filtros por Tags:</span>
-            <div id="tagsFilterList" style="display: flex; gap: 8px; flex-wrap: wrap;">
-                <button onclick="filtrarPorTag('')" style="background: #7c3aed; color: #fff; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: bold;">Todos</button>
-                <button onclick="filtrarPorTag('unity')" style="background: #0f0e17; border: 1px solid #3f3d56; color: #d8b4fe; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 0.85rem;">Unity</button>
-                <button onclick="filtrarPorTag('godot')" style="background: #0f0e17; border: 1px solid #3f3d56; color: #d8b4fe; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 0.85rem;">Godot</button>
-                <button onclick="filtrarPorTag('2d')" style="background: #0f0e17; border: 1px solid #3f3d56; color: #d8b4fe; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 0.85rem;">2D</button>
-                <button onclick="filtrarPorTag('pixel art')" style="background: #0f0e17; border: 1px solid #3f3d56; color: #d8b4fe; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 0.85rem;">Pixel Art</button>
-            </div>
-        </div>
-
-        <!-- Secção de Tabela de Líderes (Leaderboard) -->
-        <div class="leaderboard-container" style="background: #1a1829; border: 1px solid #7c3aed; padding: 20px; border-radius: 12px; margin-bottom: 25px;">
-            <h3 style="margin-top: 0; color: #d8b4fe; font-size: 1.1rem; margin-bottom: 15px; display: flex; align-items: center; gap: 8px;">
-                🏆 Top Testadores & Criadores (Leaderboard XP)
-            </h3>
-            <div id="leaderboardList" style="display: flex; flex-direction: column; gap: 8px;">
-                <span style="color: #9ca3af; font-size: 0.9rem;">A carregar ranking de XP...</span>
-            </div>
-        </div>
-
-        <h2 class="section-title">Projetos em alta</h2>
+    <a href="/perfil-ui/perfil.html" class="perfil-menu-opcao">
         
-        <div id="projectsGrid" class="projects-grid"></div>
+<span class="perfil-menu-icone" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="1.8"
+         stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="8" r="4"></circle>
+        <path d="M4 21v-2a8 8 0 0 1 16 0v2"></path>
+    </svg>
+</span>
 
-        <div id="sandboxContainer">
-            <div class="sandbox-wrapper" id="sandboxWrapper">
-                <iframe id="gameIframe" src=""></iframe>
-                <div class="sandbox-controls">
-                    <div class="sandbox-top-bar">
-                        <div class="sandbox-title" id="gameTitleActive">Executando Jogo</div>
-                        <div class="sandbox-window-btns">
-                            <button class="win-btn" onclick="minimizarSandbox()" title="Minimizar">🗕</button>
-                            <button class="win-btn" onclick="expandirSandbox()" title="Expandir (Ecrã Inteiro)">🗖</button>
-                            <button class="win-btn" onclick="fecharSandbox()" title="Fechar">✕</button>
-                        </div>
-                    </div>
-                    <div class="sandbox-footer-bar">
-                        <div class="volume-control-wrapper">
-                            <span class="volume-icon" id="volIcon" onclick="mutarAudio()">🔊</span>
-                            <input type="range" min="0" max="1" step="0.05" value="1" class="volume-slider" id="volSlider" oninput="ajustarVolume(this.value)">
-                        </div>
-                    </div>
-                </div>
+        <span>VER MEU PERFIL</span>
+    </a>
+
+    <a href="/configuracoes/configuracoes.html" class="perfil-menu-opcao">
+        
+
+<span class="perfil-menu-icone" aria-hidden="true">
+    
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="24"
+     height="24"
+     viewBox="0 0 24 24"
+     fill="none"
+     stroke="currentColor"
+     stroke-width="2"
+     stroke-linecap="round"
+     stroke-linejoin="round">
+    <path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/>
+    <circle cx="12" cy="12" r="3"/>
+</svg>
+
+</span>
+
+
+        <span>CONFIGURAÇÕES</span>
+    </a>
+
+    <!-- Link exclusivo para administradores (Oculto por defeito) -->
+    <a href="/admin-ui/admin.html" class="perfil-menu-opcao" id="link-painel-admin" style="display: none;">
+        <span class="perfil-menu-icone" aria-hidden="true">🛡️</span>
+        <span>PAINEL ADMIN</span>
+    </a>
+
+    <div class="perfil-menu-divisor"></div>
+
+    <button type="button" id="desconectar" class="perfil-menu-sair">
+        <span class="perfil-menu-icone">⇥</span>
+        <span>SAIR DA LUDARYUM</span>
+    </button>
+
+</div>
+
+</div>
+</header>
+
+
+    <main>
+        <section class="hero">
+            <span class="etiqueta">✦ CAMPANHA DA TEMPORADA</span>
+
+            <h1>Reimagine as<br>histórias da sua<br>região.</h1>
+
+            <p>
+                Entre no game jam Folclore Reimaginado, forme uma equipe
+                e transforme lendas locais em experiências inesquecíveis.
+            </p>
+
+            <div class="acoes">
+                <a href="#explorar" class="btn-principal">Explorar projetos</a>
+                <a href="/comunidade-ui/comunidade.html" class="btn-secundario">Compartilhar uma ideia</a>
             </div>
-        </div>
-    </div>
+        </section>
 
-    <!-- MODAL DE NOVO PROJETO -->
-    <div id="modalProjeto" class="modal-overlay">
-        <div class="modal-content" style="max-height: 85vh; overflow-y: auto;">
-            <div class="modal-header">
-                <div>
-                    <span class="modal-tag">NOVO PROJETO</span>
-                    <h2>Compartilhe o que você está criando</h2>
-                </div>
-                <button class="close-modal-btn" onclick="fecharModalProjeto()">&times;</button>
-            </div>
-            <form id="projectForm" onsubmit="enviarNovoProjeto(event)">
-                <label>Nome do projeto *</label>
-                <input type="text" id="projTitle" placeholder="Ex.: Tiny Alchemist" required>
-                
-                <label>Descrição curta *</label>
-                <textarea id="projDesc" rows="3" placeholder="Conte em poucas linhas o que torna sua ideia especial." required></textarea>
-                
-                <!-- NOVO CAMPO: REPOSITÓRIO GITHUB OPCIONAL -->
-                <label>Repositório GitHub (Opcional)</label>
-                <input type="url" id="projGithubUrl" placeholder="https://github.com/seu-usuario/seu-jogo" style="width: 100%; padding: 10px; background: #0f0e17; border: 1px solid #3f3d56; color: #fff; border-radius: 6px; margin-bottom: 12px; outline: none;">
-
-                <div class="form-grid-2">
-                    <div>
-                        <label>Ficheiro .ZIP do Jogo (Build Web) *</label>
-                        <input type="file" id="projZip" accept=".zip" required>
-                    </div>
-                    <div>
-                        <label>Banner / Imagem de Capa (Poster)</label>
-                        <input type="file" id="projPoster" accept="image/*">
-                    </div>
-                </div>
-                
-                <div class="form-grid-2" style="margin-top: 10px;">
-                    <div>
-                        <label>Tags (separadas por vírgula)</label>
-                        <input type="text" id="projTags" value="unity, 2d, indie">
-                    </div>
-                    <div>
-                        <label>Progresso (%)</label>
-                        <input type="number" id="projProgress" value="80" min="0" max="100">
-                    </div>
-                </div>
-
-                <div style="margin-top: 12px; margin-bottom: 10px;">
-                    <label style="display: block; color: #d8b4fe; font-size: 0.85rem; margin-bottom: 5px;">Vincular a Game Jam / Campanha (Opcional)</label>
-                    <select id="projCampaignSelect" style="width: 100%; padding: 10px; background: #0f0e17; border: 1px solid #3f3d56; color: #fff; border-radius: 6px;">
-                        <option value="">Nenhuma (Projeto Independente Geral)</option>
-                    </select>
-                </div>
-
-                <div style="margin-top: 10px; margin-bottom: 15px; background: #0f0e17; padding: 12px; border-radius: 8px; border: 1px solid #3f3d56;">
-                    <label style="display: block; color: #d8b4fe; font-size: 0.85rem; margin-bottom: 6px;">👥 Integrantes da Equipe (Pesquisar e Adicionar)</label>
-                    <div style="display: flex; gap: 8px; margin-bottom: 8px;">
-                        <input type="text" id="memberSearchInput" placeholder="Digite o username do utilizador..." style="flex: 1; padding: 8px; background: #1a1829; border: 1px solid #3f3d56; color: #fff; border-radius: 6px; outline: none; font-size: 0.85rem;">
-                        <button type="button" onclick="pesquisarMembroEquipe()" style="background: #7c3aed; color: #fff; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 0.85rem;">Pesquisar</button>
-                    </div>
-                    <div id="memberSearchResult" style="font-size: 0.85rem; margin-bottom: 8px; color: #a855f7;"></div>
-                    <div id="selectedTeamList" style="display: flex; flex-wrap: wrap; gap: 6px;">
-                        <span style="color: #9ca3af; font-size: 0.8rem;">Nenhum integrante adicionado ainda.</span>
-                    </div>
-                    <input type="hidden" id="projMembersField" name="members" value="">
-                </div>
-
-                <!-- NOVA OPÇÃO: CÓDIGO ABERTO VS PRIVADO -->
-                <div class="checkbox-wrapper" style="margin-bottom: 10px; background: rgba(124, 58, 237, 0.08); padding: 10px; border-radius: 6px; border: 1px solid rgba(124, 58, 237, 0.2);">
-                    <input type="checkbox" id="projCodigoAberto" value="1">
-                    <label for="projCodigoAberto" style="margin-top: 0; cursor: pointer; color: #d8b4fe; font-weight: bold;">🔓 Código Aberto (Liberar acesso total aos dados e código fonte aos utilizadores)</label>
-                </div>
-
-                <div class="checkbox-wrapper">
-                    <input type="checkbox" id="projExecutavel" value="1" checked>
-                    <label for="projExecutavel" style="margin-top: 0; cursor: pointer;">Pode ser executado no navegador (gerar build em sandbox)</label>
-                </div>
-
-                <hr style="border-color: #3f3d56; margin: 15px 0;">
-
-                <!-- CHECKBOXES OBRIGATÓRIOS: LGPD E NORMAS -->
-                <div class="checkbox-wrapper" style="margin-bottom: 8px;">
-                    <input type="checkbox" id="projCheckLgpd" required>
-                    <label for="projCheckLgpd" style="margin-top: 0; cursor: pointer; font-size: 0.85rem;">Declaro estar de acordo com o tratamento de dados conforme a <strong>LGPD (Lei Geral de Proteção de Dados)</strong>.</label>
-                </div>
-
-                <div class="checkbox-wrapper" style="margin-bottom: 15px;">
-                    <input type="checkbox" id="projCheckNormas" required>
-                    <label for="projCheckNormas" style="margin-top: 0; cursor: pointer; font-size: 0.85rem;">Concordo com as <strong>Normas e Garantias da Ludarium</strong> para portefólios e projetos.</label>
-                </div>
-                
-                <button type="submit" class="btn-primary" style="margin-top: 5px;">Enviar para análise e publicação</button>
-            </form>
-        </div>
-    </div>
-
-    <!-- MODAL DE EDITAR PROJETO -->
-    <div id="modalEditarProjeto" class="modal-overlay">
-        <div class="modal-content" style="max-height: 85vh; overflow-y: auto;">
-            <div class="modal-header">
-                <div>
-                    <span class="modal-tag">EDITAR PROJETO</span>
-                    <h2>Atualize as informações do seu jogo</h2>
-                </div>
-                <button class="close-modal-btn" onclick="fecharModalEditar()">&times;</button>
-            </div>
-            <form id="editProjectForm" onsubmit="salvarEdicaoProjeto(event)">
-                <input type="hidden" id="editProjId">
-                
-                <label>Nome do projeto *</label>
-                <input type="text" id="editProjTitle" required>
-                
-                <label>Descrição curta *</label>
-                <textarea id="editProjDesc" rows="3" required></textarea>
-
-                <!-- EDITAR GITHUB URL -->
-                <label>Repositório GitHub (Opcional)</label>
-                <input type="url" id="editProjGithubUrl" placeholder="https://github.com/seu-usuario/seu-jogo" style="width: 100%; padding: 10px; background: #0f0e17; border: 1px solid #3f3d56; color: #fff; border-radius: 6px; margin-bottom: 12px; outline: none;">
-                
-                <div class="form-grid-2">
-                    <div>
-                        <label>Tags (separadas por vírgula)</label>
-                        <input type="text" id="editProjTags">
-                    </div>
-                    <div>
-                        <label>Progresso (%)</label>
-                        <input type="number" id="editProjProgress" min="0" max="100">
-                    </div>
-                </div>
-
-                <div style="margin-top: 12px; margin-bottom: 10px;">
-                    <label style="display: block; color: #d8b4fe; font-size: 0.85rem; margin-bottom: 5px;">Vincular a Game Jam / Campanha</label>
-                    <select id="editProjCampaignSelect" style="width: 100%; padding: 10px; background: #0f0e17; border: 1px solid #3f3d56; color: #fff; border-radius: 6px;">
-                        <option value="">Nenhuma (Projeto Independente Geral)</option>
-                    </select>
-                </div>
-
-                <!-- EDITAR OPÇÃO CÓDIGO ABERTO -->
-                <div class="checkbox-wrapper" style="margin-bottom: 12px; background: rgba(124, 58, 237, 0.08); padding: 10px; border-radius: 6px; border: 1px solid rgba(124, 58, 237, 0.2);">
-                    <input type="checkbox" id="editProjCodigoAberto" value="1">
-                    <label for="editProjCodigoAberto" style="margin-top: 0; cursor: pointer; color: #d8b4fe; font-weight: bold;">🔓 Código Aberto (Liberar acesso total aos dados e código fonte)</label>
-                </div>
-
-                <!-- CAIXA DE RESPOSTA DA INSPEÇÃO (Visível apenas se o projeto estiver sob inspeção) -->
-                <div id="editInspectionReplyContainer" style="display: none; margin-top: 15px; margin-bottom: 15px; background: rgba(245, 158, 11, 0.08); border: 1px solid #f59e0b; padding: 15px; border-radius: 8px;">
-                    <label style="display: block; color: #f59e0b; font-size: 0.9rem; margin-bottom: 5px; font-weight: bold;">⏳ Projeto Sob Inspeção - Resposta para o Inspetor</label>
-                    <p style="font-size: 0.8rem; color: #d8b4fe; margin-bottom: 10px;">Descreva as correções efetuadas para que o administrador possa reavaliar e reativar o seu projeto:</p>
-                    <textarea id="editInspectionReply" rows="3" placeholder="Escreva aqui a sua resposta/correção..." style="width: 100%; padding: 10px; background: #0f0e17; border: 1px solid #3f3d56; color: #fff; border-radius: 6px; resize: none; font-size: 0.85rem;"></textarea>
-                </div>
-
-                <div style="margin-top: 10px; margin-bottom: 15px; background: #0f0e17; padding: 12px; border-radius: 8px; border: 1px solid #3f3d56;">
-                    <label style="display: block; color: #d8b4fe; font-size: 0.85rem; margin-bottom: 6px;">👥 Integrantes da Equipe (Gerir Colaboradores)</label>
-                    <div style="display: flex; gap: 8px; margin-bottom: 8px;">
-                        <input type="text" id="editMemberSearchInput" placeholder="Digite o username..." style="flex: 1; padding: 8px; background: #1a1829; border: 1px solid #3f3d56; color: #fff; border-radius: 6px; outline: none; font-size: 0.85rem;">
-                        <button type="button" onclick="pesquisarMembroEquipeEdicao()" style="background: #7c3aed; color: #fff; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 0.85rem;">Pesquisar</button>
-                    </div>
-                    <div id="editMemberSearchResult" style="font-size: 0.85rem; margin-bottom: 8px; color: #a855f7;"></div>
-                    <div id="editSelectedTeamList" style="display: flex; flex-wrap: wrap; gap: 6px;">
-                        <span style="color: #9ca3af; font-size: 0.8rem;">Nenhum integrante adicionado.</span>
-                    </div>
-                    <input type="hidden" id="editProjMembersField" name="members" value="">
-                </div>
-
-                <button type="submit" class="btn-primary" style="margin-top: 15px;">Guardar Alterações</button>
-            </form>
-        </div>
-    </div>
-
-    <!-- MODAL DE MENSAGEM DO ADMIN -->
-    <div id="adminMessageModal" class="modal-overlay" style="display: none; align-items: center; justify-content: center;">
-        <div class="modal-content" style="max-width: 450px;">
-            <div class="modal-header">
-                <div>
-                    <span class="modal-tag">MODERAÇÃO ADMIN</span>
-                    <h2>Enviar Mensagem Privada</h2>
-                </div>
-                <button class="close-modal-btn" onclick="closeAdminMessageModal()">&times;</button>
-            </div>
-            <p style="font-size: 0.9rem; color: #aaa; margin-bottom: 15px;">Destinatário: <strong id="modalRecipientUser" style="color: #a855f7;"></strong></p>
-            <textarea id="adminMessageText" rows="4" placeholder="Escreva a mensagem de aviso ou feedback..." style="width: 100%; margin-bottom: 15px; padding: 10px; background: #1e1b2e; border: 1px solid #4c1d95; color: #fff; border-radius: 6px; resize: none;"></textarea>
-            <div style="display: flex; gap: 10px; justify-content: flex-end;">
-                <button type="button" onclick="closeAdminMessageModal()" style="background: #4b5563; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer;">Cancelar</button>
-                <button type="button" onclick="submitAdminMessage()" style="background: #7c3aed; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: bold;">Enviar Mensagem</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- MODAL DE FEEDBACK PÓS-JOGO -->
-    <div id="modal-feedback-jogo" class="modal-overlay" style="display: none; align-items: center; justify-content: center;">
-        <div class="modal-content" style="max-width: 450px; background: #161525; border: 1px solid #7c3aed; border-radius: 12px; padding: 25px;">
-            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                <div>
-                    <span class="modal-tag" style="color: #a855f7; font-size: 0.8rem; font-weight: bold;">TESTE DE JOGO</span>
-                    <h2 style="color: #fff; font-size: 1.2rem; margin-top: 5px;">O que achou do jogo?</h2>
-                </div>
-                <button class="close-modal-btn" onclick="fecharModalFeedbackSemXP()" style="background: none; border: none; color: #aaa; font-size: 1.5rem; cursor: pointer;">&times;</button>
-            </div>
-            <p style="font-size: 0.9rem; color: #d8b4fe; margin-bottom: 20px;">Deixe o seu feedback construtivo para ajudar o criador e ganhe <strong>+75 XP</strong>!</p>
+        <section class="projetos" id="explorar">
             
-            <form id="form-feedback-jogo">
-                <input type="hidden" id="feedback-project-id">
-                
-                <label style="display: block; color: #fff; font-size: 0.85rem; margin-bottom: 5px;">Classificação (1 a 5 estrelas):</label>
-                <select id="nota-jogo" required style="width: 100%; padding: 10px; background: #0f0e17; border: 1px solid #3f3d56; color: #fff; border-radius: 6px; margin-bottom: 15px;">
-                    <option value="5">⭐⭐⭐⭐⭐ Excelente</option>
-                    <option value="4">⭐⭐⭐⭐ Muito Bom</option>
-                    <option value="3">⭐⭐⭐ Bom</option>
-                    <option value="2">⭐⭐ Regular</option>
-                    <option value="1">⭐ Precisa de Melhorar</option>
-                </select>
+<span class="etiqueta">DESCUBRA NOVOS UNIVERSOS</span>
+<h2>Explore projetos</h2>
+<p class="explorar-descricao">
+    Conheça ideias, descubra novos jogos e encontre sua próxima inspiração.
+</p>
 
-                <label style="display: block; color: #fff; font-size: 0.85rem; margin-bottom: 5px;">Comentário / Sugestão:</label>
-                <textarea id="comentario-jogo" rows="3" placeholder="Escreva o seu feedback aqui..." required style="width: 100%; padding: 10px; background: #0f0e17; border: 1px solid #3f3d56; color: #fff; border-radius: 6px; resize: none; margin-bottom: 20px;"></textarea>
+<div class="explorar-controles">
+    <input
+        type="search"
+        id="busca-projetos"
+        placeholder="Buscar projetos por nome ou categoria..."
+        aria-label="Buscar projetos"
+    >
 
-                <div style="display: flex; flex-direction: column; gap: 10px;">
-                    <button type="submit" class="btn-primary" style="background: #7c3aed; color: #fff; border: none; padding: 12px; border-radius: 6px; cursor: pointer; font-weight: bold;">Enviar Feedback e Ganhar +75 XP 🎉</button>
-                    <button type="button" class="btn-secondary" onclick="fecharModalFeedbackSemXP()" style="background: transparent; color: #9ca3af; border: none; padding: 8px; cursor: pointer; font-size: 0.9rem;">Fechar sem avaliar</button>
-                </div>
-            </form>
+    
+<div class="filtros-projetos">
+    <button type="button" class="filtro-projeto ativo" data-filtro="todos">
+        Todos
+    </button>
+
+    <button type="button" class="filtro-projeto" data-filtro="Jogo">
+        Jogos
+    </button>
+
+    <button type="button" class="filtro-projeto" data-filtro="Arte digital">
+        Arte digital
+    </button>
+
+    <button type="button" class="filtro-projeto" data-filtro="Animação">
+        Animação
+    </button>
+
+    <button type="button" class="filtro-projeto" data-filtro="História">
+        História
+    </button>
+
+    <button type="button" class="filtro-projeto" data-filtro="Outro">
+        Outros
+    </button>
+</div>
+
+</div>
+
+
+            
+<div class="carrossel-projetos">
+    <button class="seta-carrossel seta-anterior" id="projetos-anterior" type="button" aria-label="Projetos anteriores">
+        &#10094;
+    </button>
+
+    <div class="cards">
+        <div id="projetos-criados" class="cards-criados"></div>
+    </div>
+
+    <button class="seta-carrossel seta-proxima" id="projetos-proxima" type="button" aria-label="Próximos projetos">
+        &#10095;
+    </button>
+</div>
+
+<div class="ver-todos-container">
+    <a href="projetos.html" class="ver-todos-projetos">
+        Ver todos os projetos →
+    </a>
+</div>
+
+        </section>
+
+        <section class="campanha" id="campanhas">
+            <div class="campanha-imagem">FOLCLORE REIMAGINADO</div>
+            <div class="campanha-texto">
+                <span class="etiqueta">✦ CAMPANHA DA TEMPORADA</span>
+                <h2>Folclore<br>Reimaginado</h2>
+                <p>
+                    Crie uma experiência inspirada nas histórias da sua
+                    região. Mostre suas ideias, publique seus projetos
+                    e conecte-se a uma comunidade criativa.
+                </p>
+                <a href="/campanhas-ui/campanhas.html" class="btn-principal">Ver campanha →</a>
+            </div>
+        </section>
+
+        
+<section class="comunidade" id="comunidade">
+
+    <div class="comunidade-texto">
+        <span class="etiqueta">ENCONTRE A SUA TURMA</span>
+
+        <h2>Crie e melhore quando é<br>junto.</h2>
+
+        <p>
+            Participe de equipes, compartilhe ideias e encontre
+            pessoas para desenvolver seu próximo grande projeto.
+        </p>
+
+        <a href="/comunidade-ui/comunidade.html" class="btn-principal">
+            Explorar comunidade
+        </a>
+    </div>
+
+    <div class="turmas-destaque">
+        <h3>🏆 Turmas em destaque</h3>
+        <p class="turmas-subtitulo">
+            Junte-se à galera e crie algo incrível!
+        </p>
+
+        <div class="turma-card">
+            <div class="turma-info">
+                <h4>🎮 Desenvolvedores de Jogos</h4>
+                <span>Turma para quem ama criar games.</span>
+                <small>128 participantes</small>
+            </div>
+            <a href="/comunidade-ui/comunidade.html" class="btn-participar">Participar +</a>
+        </div>
+
+        <div class="turma-card">
+            <div class="turma-info">
+                <h4>🎨 Arte e Design</h4>
+                <span>Compartilhe suas artes e ideias.</span>
+                <small>96 participantes</small>
+            </div>
+            <a href="/comunidade-ui/comunidade.html" class="btn-participar">Participar +</a>
+        </div>
+
+        <div class="turma-card">
+            <div class="turma-info">
+                <h4>💻 Programação</h4>
+                <span>Aprenda e desenvolva projetos juntos.</span>
+                <small>74 participantes</small>
+            </div>
+            <a href="/comunidade-ui/comunidade.html" class="btn-participar">Participar +</a>
         </div>
     </div>
 
-    <!-- Scripts da Aplicação -->
-    <script src="home.js"></script>
-    <script>
-        // Função de verificação e carregamento assíncrono independente para evitar travamentos
-        async function verificarSessaoDashboard() {
-            const token = obterToken();
-            if (!token) return;
+</section>
 
-            // Executa os carregamentos de forma independente para que falhas pontuais não bloqueiem a home
-            atualizarPerfilMenu(token).catch(e => console.warn('Perfil indisponível', e));
-            carregarProjetosHome().catch(e => console.error('Erro ao carregar projetos:', e));
-            carregarMensagensPrivadas().catch(e => console.warn('Mensagens indisponíveis', e));
-            carregarProjetosSobInspecaoUsuario().catch(e => console.warn('Inspeções indisponíveis', e));
-            verificarPermissoesAdmin().catch(e => console.warn('Permissões admin indisponíveis', e));
-            carregarNotificacoes().catch(e => console.warn('Notificações indisponíveis', e));
-            carregarCampanhasNoSelect().catch(e => console.warn('Campanhas indisponíveis', e));
-            carregarLeaderboard().catch(e => console.warn('Leaderboard indisponível', e));
+    </main>
+
+    <footer>
+        <strong>LUDARYUM</strong>
+        <span>Feito para quem transforma ideias em aventuras.</span>
+        <span>© 2026 Ludaryum</span>
+    </footer>
+
+    
+<!-- Modal de criação de projeto -->
+<div class="modal-projeto-overlay" id="modal-projeto" aria-hidden="true">
+    <div class="modal-projeto-conteudo" role="dialog" aria-modal="true" aria-labelledby="titulo-modal-projeto">
+
+        <button
+            class="modal-projeto-fechar"
+            id="fechar-modal-projeto"
+            type="button"
+            aria-label="Fechar janela"
+        >×</button>
+
+        <span class="etiqueta">TIRE SUA IDEIA DO PAPEL</span>
+
+        <h2 id="titulo-modal-projeto">Desenvolver projeto</h2>
+
+        <p class="modal-projeto-descricao">
+            Apresente sua ideia, envie o build do seu jogo e compartilhe com a comunidade.
+        </p>
+
+        <form id="form-projeto">
+
+            <label for="nome-projeto">Nome do projeto</label>
+            <input
+                type="text"
+                id="nome-projeto"
+                placeholder="Ex.: Meu novo jogo"
+                required
+            >
+
+            <label for="categoria">Categoria</label>
+            <select id="categoria" required>
+                <option value="">Escolha uma categoria</option>
+                <option value="Jogo">Jogo</option>
+                <option value="Arte digital">Arte digital</option>
+                <option value="Animação">Animação</option>
+                <option value="História">História</option>
+                <option value="Outro">Outro</option>
+            </select>
+
+            <label for="campanha-projeto">Campanha relacionada</label>
+<select id="campanha-projeto">
+    <option value="">Nenhuma campanha</option>
+    <option value="Horizontes Solarpunk">Horizontes Solarpunk</option>
+    <option value="Acessibilidade em primeiro lugar">Acessibilidade em primeiro lugar</option>
+    <option value="NPCs que parecem vivos">NPCs que parecem vivos</option>
+</select>
+<small>Escolha uma campanha para vincular ao seu projeto, se desejar.</small>
+
+            <label for="descricao">Descrição</label>
+            <textarea
+                id="descricao"
+                rows="4"
+                placeholder="Conte como será seu projeto..."
+                required
+            ></textarea>
+
+            <!-- ======================================================= -->
+            <!-- ÁREA VISUAL PARA O FICHEIRO .ZIP DO JOGO (BUILD_FILE)   -->
+            <!-- ======================================================= -->
+            <div style="background: rgba(56, 189, 248, 0.05); padding: 14px; border: 1px dashed #38bdf8; border-radius: 8px; margin: 15px 0;">
+                <label for="build-zip" style="color: #38bdf8; font-weight: bold; display: block; margin-bottom: 6px;">📦 Ficheiro do Jogo (.ZIP contendo o index.html) *</label>
+                <input
+                    type="file"
+                    id="build-zip"
+                    accept=".zip"
+                    required
+                    style="width: 100%; color: #fff;"
+                >
+                <small style="display: block; margin-top: 6px; color: #a0aec0; font-size: 11px;">
+                    Obrigatório: Envie o .zip com os ficheiros web do jogo para descompactação automática no servidor e reprodução direta no site.
+                </small>
+            </div>
+
+            
+<label for="tags-projeto">Tags do projeto</label>
+
+<div class="tags-container" id="tags-container">
+
+    <input
+        type="text"
+        id="tags-projeto"
+        placeholder="Digite uma tag e aperte Enter"
+        autocomplete="off"
+    >
+
+    <div class="tags-lista" id="tags-lista"></div>
+
+</div>
+
+<small class="tags-ajuda">
+    Adicione palavras que identificam seu projeto.
+</small>
+
+<label for="visibilidade-projeto">Visibilidade do projeto</label>
+
+<select id="visibilidade-projeto">
+    <option value="publico">Público</option>
+    <option value="privado">Privado</option>
+</select>
+
+<label for="comentarios-projeto">Comentários e feedback</label>
+
+<select id="comentarios-projeto">
+    <option value="sim">Permitir comentários e feedback</option>
+    <option value="nao">Desativar comentários e feedback</option>
+</select>
+
+<small>
+    Escolha se a comunidade poderá comentar e enviar sugestões sobre seu projeto.
+</small>
+
+<label for="versao-projeto">Versão atual</label>
+<input
+    type="text"
+    id="versao-projeto"
+    placeholder="Ex.: 1.0.0"
+    value="1.0.0"
+>
+
+<label for="progresso-projeto">Progresso do projeto</label>
+
+<div class="controle-progresso">
+    <input
+        type="range"
+        id="progresso-projeto"
+        min="0"
+        max="100"
+        value="0"
+    >
+
+    <span id="valor-progresso">0%</span>
+</div>
+
+<label for="repositorio-projeto">Repositório do projeto</label>
+<input
+    type="url"
+    id="repositorio-projeto"
+    placeholder="https://github.com/usuario/projeto"
+>
+<small>Compartilhe o link do GitHub do seu projeto.</small>
+
+
+            <label for="imagem-projeto">Imagem da capa (opcional)</label>
+            <input
+                type="file"
+                id="imagem-projeto"
+                accept="image/*"
+            >
+
+            <label for="formato-capa">Formato da capa</label>
+            <select id="formato-capa">
+                <option value="horizontal">Horizontal</option>
+                <option value="vertical">Vertical</option>
+                <option value="quadrado">Quadrado</option>
+            </select>
+
+            <label for="ajuste-capa">Ajuste da imagem</label>
+            <select id="ajuste-capa">
+                <option value="inteira">Mostrar imagem inteira</option>
+                <option value="preencher">Preencher a capa</option>
+            </select>
+
+            <div class="previa-capa-container">
+                <p>Pré-visualização da capa</p>
+                <div class="previa-capa formato-horizontal" id="previa-capa">
+                    Escolha uma imagem para visualizar
+                </div>
+            </div>
+
+            
+<div class="publicacao-aceites">
+    <p class="publicacao-aceites-titulo">
+        Antes de publicar
+    </p>
+
+    <label class="aceite-item">
+    <input type="checkbox" id="aceite-termos-projeto">
+    <span>
+        Li e aceito os
+        <a href="termos-de-uso.html"
+           class="terms-link"
+           target="_blank">
+            Termos de Uso
+        </a>
+        aplicáveis à publicação.
+    </span>
+</label>
+
+    <label class="aceite-item">
+        <input type="checkbox" id="aceite-autorizacao-projeto">
+        <span>
+            Confirmo que tenho autorização para publicar este jogo
+            or projeto e os materiais incluídos nele.
+        </span>
+    </label>
+</div>
+
+<p id="mensagem-aceites-projeto" role="status" aria-live="polite"></p>
+
+<button class="btn-publicar-modal" type="submit">
+    ＋ Criar meu projeto
+</button>
+
+
+        </form>
+    </div>
+</div>
+
+<!-- Notificação de sucesso -->
+<div id="notificacao-sucesso-projeto" class="sucesso-projeto-overlay" style="display: none;">
+    <div class="sucesso-projeto-card">
+        <div class="sucesso-projeto-icone">✓</div>
+
+        <span class="sucesso-projeto-etiqueta">MISSÃO CONCLUÍDA</span>
+
+        <h2>Projeto criado!</h2>
+
+        <p>
+            Sua ideia acaba de ganhar vida.
+            Seu projeto foi salvo com sucesso.
+            Agora é hora de compartilhar sua criatividade com a comunidade!
+        </p>
+
+        <button id="continuar-explorando" type="button">
+            Continuar explorando
+        </button>
+    </div>
+</div>
+
+
+<!-- Janela de confirmação para excluir projeto -->
+<div class="modal-confirmacao" id="modal-confirmacao">
+    <div class="confirmacao-conteudo">
+        <div class="confirmacao-icone">!</div>
+
+        <h2>Excluir projeto?</h2>
+
+        <p>
+            Tem certeza de que deseja excluir este projeto?
+            Essa ação não poderá ser desfeita.
+        </p>
+
+        <div class="confirmacao-botoes">
+            <button type="button" id="cancelar-exclusao">
+                Não, cancelar
+            </button>
+
+            <button type="button" id="confirmar-exclusao">
+                Sim, excluir
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ======================================================= -->
+<!-- MODAL DO PLAYER DO JOGO NA MESMA PÁGINA (HOME)          -->
+<!-- ======================================================= -->
+<div class="modal-projeto-overlay" id="modal-player-jogo" aria-hidden="true" style="display: none;">
+    <div class="modal-projeto-conteudo" role="dialog" aria-modal="true" aria-labelledby="titulo-player-jogo" style="max-width: 950px; width: 95%;">
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <div>
+                <span class="etiqueta">MODO WEB ATIVO</span>
+                <h2 id="titulo-player-jogo" style="color: #38bdf8; margin: 5px 0 0 0;">🎮 A carregar jogo...</h2>
+            </div>
+            
+            <!-- Barra de Ferramentas do Player (Som e Tela Cheia) -->
+            <div style="display: flex; gap: 8px;">
+                <button type="button" id="btn-toggle-som" title="Mutar / Ativar Som" style="background: #1e293b; border: 1px solid #38bdf8; color: #38bdf8; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 14px;">
+                    🔊 Som Ativo
+                </button>
+                <button type="button" id="btn-fullscreen" title="Expandir para Tela Cheia" style="background: #1e293b; border: 1px solid #38bdf8; color: #38bdf8; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 14px;">
+                    ⛶ Tela Cheia
+                </button>
+                <button class="modal-projeto-fechar" id="fechar-modal-player" type="button" aria-label="Fechar player" style="position: static; margin-left: 10px;">×</button>
+            </div>
+        </div>
+
+        <div id="container-iframe-jogo" style="background: #000; border: 2px solid #38bdf8; border-radius: 8px; overflow: hidden; margin-top: 15px; position: relative;">
+            <iframe id="iframe-jogo-home" title="Player do Jogo" style="width: 100%; height: 550px; border: none; display: block;" allow="autoplay; fullscreen; microphone; camera"></iframe>
+        </div>
+
+        <p id="descricao-player-jogo" style="margin-top: 15px; color: #a0aec0; font-size: 14px;"></p>
+    </div>
+</div>
+
+
+    <script src="home.js"></script>
+
+    
+<script>
+    try {
+        var temaSalvoHome = localStorage.getItem("tema-ludaryum") || localStorage.getItem("ludaryumTema") || "escuro";
+        document.documentElement.setAttribute("data-tema", temaSalvoHome);
+    } catch (e) {
+        document.documentElement.setAttribute("data-tema", "escuro");
+    }
+
+    // Script global embutido para exibir o Painel Admin apenas para administradores
+    async function verificarAdminNaHome() {
+        const token = sessionStorage.getItem("ludaryumToken") || localStorage.getItem("ludaryumToken") || localStorage.getItem("ludarium_token");
+        const linkAdmin = document.getElementById("link-painel-admin");
+        
+        if (!token || !linkAdmin) return;
+
+        try {
+            const resposta = await fetch("http://localhost:8005/auth/verificar-admin", {
+                method: "GET",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`
+                }
+            });
+
+            if (resposta.ok) {
+                linkAdmin.style.display = "flex"; // Revela o item do menu de perfil se for admin
+            }
+        } catch (e) {
+            // Silenciosamente mantido oculto para utilizadores comuns
         }
-    </script>
+    }
+
+    verificarAdminNaHome();
+</script>
+
+
 </body>
 </html>

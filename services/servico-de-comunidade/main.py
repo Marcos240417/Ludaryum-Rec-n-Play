@@ -1,5 +1,9 @@
+# Caminho: servico-de-comunidade/main.py
 import os
+import urllib.parse
 from pathlib import Path
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional
 from fastapi import FastAPI, Depends, HTTPException, status, Query, Body, WebSocket, WebSocketDisconnect
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,8 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import text
 from sqlalchemy.orm import selectinload
-from datetime import datetime, timedelta
-from typing import Dict, List
+
 import models
 import database
 import schemas
@@ -18,15 +21,22 @@ import schemas
 SECRET_KEY = "ludarium_super_secret_key_jwt"
 ALGORITHM = "HS256"
 
-# CORREÇÃO: Removido o localhost fixo para suportar Cloudflare Tunnel dinamicamente
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
 app = FastAPI(title="Ludarium Community Service", version="1.0.0")
 
+# --- CORS CONFIGURATION ---
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # --- WEBSOCKET CONNECTION MANAGER ---
 class ChatConnectionManager:
     def __init__(self):
-        # Mapeia uma chave única de sala/canal (ex: "forum_1", "candidatura_5", "grupo_2") para listas de WebSockets
         self.active_connections: Dict[str, List[WebSocket]] = {}
 
     async def connect(self, room_key: str, websocket: WebSocket):
@@ -63,6 +73,8 @@ async def startup_event():
             "ALTER TABLE foruns_publicos ADD COLUMN IF NOT EXISTS suspend_reason TEXT;",
             "ALTER TABLE foruns_publicos ADD COLUMN IF NOT EXISTS suspended_until TIMESTAMP;",
             "ALTER TABLE foruns_denuncias ADD COLUMN IF NOT EXISTS evidencia TEXT;",
+            "ALTER TABLE foruns_denuncias ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pendente';",
+            "ALTER TABLE foruns_denuncias ADD COLUMN IF NOT EXISTS gravidade TEXT DEFAULT 'moderada';",
             "ALTER TABLE grupos_privados ADD COLUMN IF NOT EXISTS tipo TEXT DEFAULT 'privado';",
             "ALTER TABLE grupo_membros ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'membro';",
             "ALTER TABLE publicacao_candidatos ADD COLUMN IF NOT EXISTS chat_liberado INTEGER DEFAULT 0;"
@@ -77,15 +89,7 @@ async def startup_event():
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FRONTEND_DIR = os.path.join(BASE_DIR, "frontend")
 if os.path.exists(FRONTEND_DIR):
-    app.mount("/frontend", StaticFiles(directory=FRONTEND_DIR), name="frontend")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Permite qualquer origem para evitar conflitos com Cloudflare
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    app.mount("/comunidade-ui", StaticFiles(directory=FRONTEND_DIR), name="frontend")
 
 async def obter_db():
     async for session in database.obter_base_de_dados():
@@ -107,7 +111,6 @@ def obter_utilizador_atual(token: str = Depends(oauth2_scheme)):
         raise credentials_exception
 
 async def criar_notificacao_aux(db: AsyncSession, destinatario_email: str, conteudo: str):
-    """Função auxiliar assíncrona para criar notificações internas e alertas."""
     if not destinatario_email:
         return
     nova_notif = models.NotificationModel(
@@ -120,12 +123,53 @@ async def criar_notificacao_aux(db: AsyncSession, destinatario_email: str, conte
 # --- WEBSOCKET ENDPOINTS EM TEMPO REAL ---
 
 @app.websocket("/ws/forum/{forum_id}")
-async def ws_forum_endpoint(websocket: WebSocket, forum_id: int):
+async def ws_forum_endpoint(
+    websocket: WebSocket, 
+    forum_id: int, 
+    token: str = Query(...)
+):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub") or payload.get("email")
+        if not email:
+            await websocket.close(code=4001)
+            return
+    except JWTError:
+        await websocket.close(code=4001)
+        return
+
     room_key = f"forum_{forum_id}"
     await manager.connect(room_key, websocket)
     try:
         while True:
             data = await websocket.receive_json()
+            
+            if data.get("tipo") == "digitando":
+                await manager.broadcast(room_key, {
+                    "tipo": "digitando",
+                    "autor": data.get("autor", email.split('@')[0])
+                })
+                continue
+
+            conteudo = data.get("conteudo")
+            autor = data.get("autor") or email.split('@')[0]
+            if conteudo:
+                async for session in database.obter_base_de_dados():
+                    topico_res = await session.execute(select(models.ForumTopicoModel).filter(models.ForumTopicoModel.forum_id == forum_id))
+                    topico = topico_res.scalars().first()
+                    if topico:
+                        nova_msg = models.ForumTopicoMensagemModel(
+                            topico_id=topico.id,
+                            conteudo=conteudo.strip(),
+                            autor=autor,
+                            autor_email=email
+                        )
+                        session.add(nova_msg)
+                        await session.commit()
+                        await session.refresh(nova_msg)
+                        data["id"] = nova_msg.id
+                        data["created_at"] = str(nova_msg.created_at)
+                    break
             await manager.broadcast(room_key, data)
     except WebSocketDisconnect:
         manager.disconnect(room_key, websocket)
@@ -137,21 +181,86 @@ async def ws_candidatura_endpoint(websocket: WebSocket, candidatura_id: int):
     try:
         while True:
             data = await websocket.receive_json()
+            
+            if data.get("tipo") == "digitando":
+                await manager.broadcast(room_key, {
+                    "tipo": "digitando",
+                    "autor": data.get("autor", "Utilizador")
+                })
+                continue
+
+            conteudo = data.get("conteudo")
+            autor_email = data.get("autor_email")
+            autor = data.get("autor")
+            
+            if conteudo:
+                async for session in database.obter_base_de_dados():
+                    nova_mensagem = models.CandidaturaMensagemModel(
+                        candidatura_id=candidatura_id,
+                        autor=autor or "Utilizador",
+                        autor_email=autor_email or "sistema@ludarium.com",
+                        conteudo=conteudo.strip()
+                    )
+                    session.add(nova_mensagem)
+                    await session.commit()
+                    await session.refresh(nova_mensagem)
+                    
+                    data["id"] = nova_mensagem.id
+                    data["created_at"] = str(nova_mensagem.created_at)
+                    break
+
             await manager.broadcast(room_key, data)
     except WebSocketDisconnect:
         manager.disconnect(room_key, websocket)
 
 @app.websocket("/ws/grupo/{grupo_id}")
-async def ws_grupo_endpoint(websocket: WebSocket, grupo_id: int):
+async def ws_grupo_endpoint(
+    websocket: WebSocket, 
+    grupo_id: int, 
+    token: str = Query(...)
+):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub") or payload.get("email")
+        if not email:
+            await websocket.close(code=4001)
+            return
+    except JWTError:
+        await websocket.close(code=4001)
+        return
+
     room_key = f"grupo_{grupo_id}"
     await manager.connect(room_key, websocket)
     try:
         while True:
             data = await websocket.receive_json()
+            
+            if data.get("tipo") == "digitando":
+                await manager.broadcast(room_key, {
+                    "tipo": "digitando",
+                    "autor": data.get("autor", email.split('@')[0])
+                })
+                continue
+
+            conteudo = data.get("conteudo")
+            autor = data.get("autor") or email.split('@')[0]
+            if conteudo:
+                async for session in database.obter_base_de_dados():
+                    nova_msg = models.GrupoMensagemModel(
+                        grupo_id=grupo_id,
+                        autor=autor,
+                        autor_email=email,
+                        conteudo=conteudo.strip()
+                    )
+                    session.add(nova_msg)
+                    await session.commit()
+                    await session.refresh(nova_msg)
+                    data["id"] = nova_msg.id
+                    data["created_at"] = str(nova_msg.created_at)
+                    break
             await manager.broadcast(room_key, data)
     except WebSocketDisconnect:
         manager.disconnect(room_key, websocket)
-
 
 @app.get("/")
 def raiz():
@@ -294,8 +403,8 @@ async def quero_participar(publicacao_id: int, db: AsyncSession = Depends(obter_
     if not pub:
         raise HTTPException(status_code=404, detail="Publicação não encontrada")
     
-    if pub.creator_email and pub.creator_email.lower() == utilizador_email.lower():
-        raise HTTPException(status_code=400, detail="O criador da publicação não pode candidatar-se à sua própria vaga.")
+    if pub.creator_email and pub.creator_email.strip().lower() == utilizador_email.strip().lower():
+        raise HTTPException(status_code=400, detail="O criador da publicação (recrutador) não pode candidatar-se à sua própria vaga.")
     
     nome_utilizador = utilizador_email.split('@')[0]
 
@@ -329,7 +438,7 @@ async def quero_participar(publicacao_id: int, db: AsyncSession = Depends(obter_
 
             pub.interessados_qtd = (pub.interessados_qtd or 0) + 1
 
-            if pub.creator_email and pub.creator_email != utilizador_email:
+            if pub.creator_email:
                 await criar_notificacao_aux(
                     db, 
                     pub.creator_email, 
@@ -358,6 +467,7 @@ async def quero_participar(publicacao_id: int, db: AsyncSession = Depends(obter_
         "id": pub_atualizada.id,
         "autor": pub_atualizada.autor,
         "autor_arroba": pub_atualizada.autor_arroba,
+        "creator_email": pub_atualizada.creator_email,
         "comunidade": pub_atualizada.comunidade,
         "tipo_badge": pub_atualizada.tipo_badge,
         "titulo": pub_atualizada.titulo,
@@ -372,24 +482,23 @@ async def quero_participar(publicacao_id: int, db: AsyncSession = Depends(obter_
 
 @app.get("/publicacoes/{publicacao_id}/candidatos")
 async def listar_candidatos_publicacao(publicacao_id: int, db: AsyncSession = Depends(obter_db), utilizador_email: str = Depends(obter_utilizador_atual)):
+    email_atual = utilizador_email.strip().lower()
+    
     result = await db.execute(select(models.PublicacaoModel).filter(models.PublicacaoModel.id == publicacao_id))
     pub = result.scalars().first()
     if not pub:
         raise HTTPException(status_code=404, detail="Publicação não encontrada.")
 
-    is_criador = bool(pub.creator_email and pub.creator_email.lower() == utilizador_email.lower())
+    creator_email = (pub.creator_email or "").strip().lower()
+    is_criador = bool(creator_email and creator_email == email_atual)
+    is_admin = "admin" in email_atual
     
-    cand_res = await db.execute(select(models.PublicacaoCandidatoModel).filter_by(
-        publicacao_id=publicacao_id, 
-        user_email=utilizador_email
-    ))
-    candidato_inscrito = cand_res.scalars().first()
-
-    resultado = []
-
-    if is_criador:
+    if is_criador or is_admin:
         candidatos_res = await db.execute(select(models.PublicacaoCandidatoModel).filter_by(publicacao_id=publicacao_id))
         candidatos = candidatos_res.scalars().all()
+        
+        recrutador_nome_oficial = pub.autor or (creator_email.split('@')[0] if creator_email else "Recrutador")
+        resultado = []
         for c in candidatos:
             resultado.append({
                 "id": c.id,
@@ -399,30 +508,30 @@ async def listar_candidatos_publicacao(publicacao_id: int, db: AsyncSession = De
                 "username": c.username,
                 "papel": c.papel,
                 "status": c.status,
-                "chat_liberado": getattr(c, "chat_liberado", 0),
-                "avatar": c.nome[0].upper() if c.nome else "U"
+                "chat_liberado": getattr(c, "chat_liberado", 1),
+                "recrutador_nome": recrutador_nome_oficial
             })
-            
-    elif candidato_inscrito:
-        nome_recrutador = pub.autor or "Recrutador"
-        email_recrutador = pub.creator_email or "recrutador@ludarium.com"
-        username_recrutador = f"@{email_recrutador.split('@')[0]}"
-        
-        resultado.append({
-            "id": candidato_inscrito.id,
-            "publicacao_id": pub.id,
-            "user_email": email_recrutador,
-            "nome": nome_recrutador,
-            "username": username_recrutador,
-            "papel": f"Recrutador da vaga: {pub.titulo}",
-            "status": candidato_inscrito.status,
-            "chat_liberado": getattr(candidato_inscrito, "chat_liberado", 0),
-            "avatar": nome_recrutador[0].upper() if nome_recrutador else "R"
-        })
-    else:
-        return []
+        return resultado
 
-    return resultado
+    cand_res = await db.execute(select(models.PublicacaoCandidatoModel).filter_by(
+        publicacao_id=publicacao_id, 
+        user_email=utilizador_email
+    ))
+    candidato_inscrito = cand_res.scalars().first()
+    if candidato_inscrito:
+        return [{
+            "id": candidato_inscrito.id,
+            "publicacao_id": candidato_inscrito.publicacao_id,
+            "user_email": candidato_inscrito.user_email,
+            "nome": candidato_inscrito.nome,
+            "username": candidato_inscrito.username,
+            "papel": candidato_inscrito.papel,
+            "status": candidato_inscrito.status,
+            "chat_liberado": candidato_inscrito.chat_liberado,
+            "recrutador_nome": pub.autor or "Recrutador"
+        }]
+    
+    return []
 
 @app.patch("/candidatos/{candidato_id}/status")
 async def atualizar_status_candidato(candidato_id: int, payload: dict = Body(...), db: AsyncSession = Depends(obter_db), utilizador_email: str = Depends(obter_utilizador_atual)):
@@ -442,6 +551,9 @@ async def atualizar_status_candidato(candidato_id: int, payload: dict = Body(...
         raise HTTPException(status_code=403, detail="Apenas o criador da publicação pode alterar o status do candidato.")
     
     candidato.status = novo_status
+    if novo_status == "aprovado":
+        candidato.chat_liberado = 1
+
     await db.commit()
     
     await criar_notificacao_aux(
@@ -451,7 +563,7 @@ async def atualizar_status_candidato(candidato_id: int, payload: dict = Body(...
     )
     await db.commit()
     
-    return {"mensagem": f"Candidato atualizado para {novo_status} com sucesso!", "id": candidato.id, "status": candidato.status}
+    return {"mensagem": f"Candidato atualizado para {novo_status} com sucesso!", "id": candidato.id, "status": candidato.status, "chat_liberado": candidato.chat_liberado}
 
 @app.delete("/candidatos/{candidato_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def apagar_candidato_base(candidato_id: int, db: AsyncSession = Depends(obter_db), utilizador_email: str = Depends(obter_utilizador_atual)):
@@ -495,30 +607,33 @@ async def listar_perfis_recomendados(db: AsyncSession = Depends(obter_db)):
     ]
 
 @app.get("/candidaturas/{candidatura_id}/mensagens")
-async def listar_mensagens_candidatura(candidatura_id: int, db: AsyncSession = Depends(obter_db), utilizador_email: str = Depends(obter_utilizador_atual)):
+async def listar_mensagens_candidatura(
+    candidatura_id: int, 
+    db: AsyncSession = Depends(obter_db), 
+    utilizador_email: str = Depends(obter_utilizador_atual)
+):
+    email_atual = utilizador_email.strip().lower()
+
     cand_res = await db.execute(select(models.PublicacaoCandidatoModel).filter_by(id=candidatura_id))
     candidato = cand_res.scalars().first()
+    
     if not candidato:
         raise HTTPException(status_code=404, detail="Candidatura não encontrada.")
-    
+
     pub_res = await db.execute(select(models.PublicacaoModel).filter_by(id=candidato.publicacao_id))
-    pub = pub_res.scalars().first()
-    is_recrutador = pub and pub.creator_email and pub.creator_email.lower() == utilizador_email.lower()
+    pub_obj = pub_res.scalars().first()
+
+    is_recrutador = pub_obj and pub_obj.creator_email and pub_obj.creator_email.strip().lower() == email_atual
+    is_candidato = candidato.user_email and candidato.user_email.strip().lower() == email_atual
+    is_admin = "admin" in email_atual
     
-    if not is_recrutador and not getattr(candidato, 'chat_liberado', 0):
-        raise HTTPException(status_code=403, detail="O chat de candidatura aguarda o primeiro contacto do recrutador.")
-    
-    resultado = [
-        {
-            "id": 0,
-            "candidatura_id": candidatura_id,
-            "autor": candidato.nome,
-            "autor_email": candidato.user_email,
-            "conteudo": f"Olá! Demonstrei interesse na vaga. Meu papel principal é {candidato.papel}.",
-            "created_at": datetime.utcnow().isoformat() + "Z"
-        }
-    ]
-    
+    if not (is_recrutador or is_candidato or is_admin):
+        raise HTTPException(status_code=403, detail="Acesso negado ao chat.")
+
+    if candidato and getattr(candidato, 'chat_liberado', 0) == 0:
+        candidato.chat_liberado = 1
+        await db.commit()
+
     msg_res = await db.execute(
         select(models.CandidaturaMensagemModel)
         .filter_by(candidatura_id=candidatura_id)
@@ -526,10 +641,11 @@ async def listar_mensagens_candidatura(candidatura_id: int, db: AsyncSession = D
     )
     mensagens_db = msg_res.scalars().all()
     
+    resultado = []
     for m in mensagens_db:
         resultado.append({
             "id": m.id,
-            "candidatura_id": m.candidatura_id,
+            "candidatura_id": candidatura_id,
             "autor": m.autor,
             "autor_email": m.autor_email,
             "conteudo": m.conteudo,
@@ -538,60 +654,52 @@ async def listar_mensagens_candidatura(candidatura_id: int, db: AsyncSession = D
         
     return resultado
 
-@app.post("/candidaturas/{candidatura_id}/mensagens", status_code=status.HTTP_201_CREATED)
-async def enviar_mensagem_candidatura(candidatura_id: int, payload: dict = Body(...), db: AsyncSession = Depends(obter_db), utilizador_email: str = Depends(obter_utilizador_atual)):
-    conteudo = payload.get("conteudo")
-    if not conteudo or not conteudo.strip():
-        raise HTTPException(status_code=400, detail="O conteúdo da mensagem não pode estar vazio.")
-    
+@app.post("/candidaturas/{candidatura_id}/mensagens")
+async def enviar_mensagem_candidatura(
+    candidatura_id: int,
+    payload: schemas.MensagemCreateSchema,
+    db: AsyncSession = Depends(obter_db),
+    utilizador_email: str = Depends(obter_utilizador_atual)
+):
+    email_atual = utilizador_email.strip().lower()
+
     cand_res = await db.execute(select(models.PublicacaoCandidatoModel).filter_by(id=candidatura_id))
     candidato = cand_res.scalars().first()
     if not candidato:
         raise HTTPException(status_code=404, detail="Candidatura não encontrada.")
-    
+
     pub_res = await db.execute(select(models.PublicacaoModel).filter_by(id=candidato.publicacao_id))
-    pub = pub_res.scalars().first()
-    nome_utilizador = utilizador_email.split('@')[0]
-    
-    eh_recrutador = pub and pub.creator_email and utilizador_email.lower() == pub.creator_email.lower()
-    
-    if eh_recrutador:
+    pub_obj = pub_res.scalars().first()
+
+    is_recrutador = pub_obj and pub_obj.creator_email and pub_obj.creator_email.strip().lower() == email_atual
+    is_candidato = candidato.user_email and candidato.user_email.strip().lower() == email_atual
+    is_admin = "admin" in email_atual
+
+    if not (is_recrutador or is_candidato or is_admin):
+        raise HTTPException(status_code=403, detail="Não tem permissão para enviar mensagens nesta candidatura.")
+
+    if getattr(candidato, 'chat_liberado', 0) == 0:
         candidato.chat_liberado = 1
-    
-    if not eh_recrutador and not getattr(candidato, 'chat_liberado', 0):
-        raise HTTPException(
-            status_code=403, 
-            detail="O chat de candidatura só estará disponível após o recrutador iniciar o contacto."
-        )
 
-    nova_mensagem = models.CandidaturaMensagemModel(
+    nome_autor = email_atual.split('@')[0]
+    nova_msg = models.CandidaturaMensagemModel(
         candidatura_id=candidatura_id,
-        autor=nome_utilizador,
-        autor_email=utilizador_email,
-        conteudo=conteudo.strip()
+        autor=nome_autor,
+        autor_email=email_atual,
+        conteudo=payload.conteudo
     )
-    db.add(nova_mensagem)
-
-    destinatario_email = candidato.user_email if eh_recrutador else (pub.creator_email if pub else None)
     
-    if destinatario_email and destinatario_email.lower() != utilizador_email.lower():
-        await criar_notificacao_aux(
-            db,
-            destinatario_email,
-            f"💬 Nova mensagem de @{nome_utilizador} no chat da candidatura."
-        )
-
+    db.add(nova_msg)
     await db.commit()
-    await db.refresh(candidato)
-    await db.refresh(nova_mensagem)
-    
+    await db.refresh(nova_msg)
+
     return {
-        "id": nova_mensagem.id,
-        "candidatura_id": nova_mensagem.candidatura_id,
-        "autor": nova_mensagem.autor,
-        "autor_email": nova_mensagem.autor_email,
-        "conteudo": nova_mensagem.conteudo,
-        "created_at": nova_mensagem.created_at
+        "id": nova_msg.id,
+        "candidatura_id": candidatura_id,
+        "autor": nova_msg.autor,
+        "autor_email": nova_msg.autor_email,
+        "conteudo": nova_msg.conteudo,
+        "created_at": nova_msg.created_at
     }
 
 @app.get("/meus-chats-candidaturas")
@@ -1088,12 +1196,23 @@ async def ativar_forum_admin(
     return {"mensagem": "Fórum reativado com sucesso.", "is_suspended": 0}
 
 @app.get("/admin/foruns/denuncias")
-async def listar_denuncias_foruns(db: AsyncSession = Depends(obter_db), utilizador_email: str = Depends(obter_utilizador_atual)):
+async def listar_denuncias_foruns(
+    status_filtro: Optional[str] = Query(None, alias="status"),
+    gravidade_filtro: Optional[str] = Query(None, alias="gravidade"),
+    db: AsyncSession = Depends(obter_db), 
+    utilizador_email: str = Depends(obter_utilizador_atual)
+):
     is_admin = "admin" in utilizador_email.lower()
     if not is_admin:
         raise HTTPException(status_code=403, detail="Acesso restrito a administradores.")
         
-    denuncia_res = await db.execute(select(models.ForumDenunciaModel))
+    query = select(models.ForumDenunciaModel)
+    if status_filtro:
+        query = query.filter(models.ForumDenunciaModel.status == status_filtro)
+    if gravidade_filtro:
+        query = query.filter(models.ForumDenunciaModel.gravidade == gravidade_filtro)
+
+    denuncia_res = await db.execute(query)
     denuncias = denuncia_res.scalars().all()
     resultado = []
     for d in denuncias:
@@ -1106,7 +1225,9 @@ async def listar_denuncias_foruns(db: AsyncSession = Depends(obter_db), utilizad
             "forum_suspenso": forum.is_suspended if forum else 0,
             "autor_email": d.autor_email,
             "motivo": d.motivo,
-            "evidencia": d.evidencia,
+            "evidencia": getattr(d, "evidencia", None),
+            "status": getattr(d, "status", "pendente"),
+            "gravidade": getattr(d, "gravidade", "moderada"),
             "created_at": d.created_at
         })
     return resultado
@@ -1114,19 +1235,18 @@ async def listar_denuncias_foruns(db: AsyncSession = Depends(obter_db), utilizad
 @app.delete("/admin/foruns/denuncias/{denuncia_id}/ignorar", status_code=status.HTTP_200_OK)
 async def ignorar_denuncia_admin(
     denuncia_id: int, 
-    payload: dict = Body(default=None),
     db: AsyncSession = Depends(obter_db), 
     utilizador_email: str = Depends(obter_utilizador_atual)
 ):
     is_admin = "admin" in utilizador_email.lower()
     if not is_admin:
         raise HTTPException(status_code=403, detail="Acesso restrito a administradores.")
-        
+
     den_res = await db.execute(select(models.ForumDenunciaModel).filter(models.ForumDenunciaModel.id == denuncia_id))
     denuncia = den_res.scalars().first()
     if not denuncia:
         raise HTTPException(status_code=404, detail="Denúncia não encontrada.")
-    
+
     forum_res = await db.execute(select(models.ForumModel).filter(models.ForumModel.id == denuncia.forum_id))
     forum = forum_res.scalars().first()
     if forum:
@@ -1134,13 +1254,15 @@ async def ignorar_denuncia_admin(
         forum.suspend_reason = None
         forum.suspended_until = None
 
+    denuncia.status = "ignorado"
     await db.delete(denuncia)
     await db.commit()
-    return {"message": "Denúncia ignorada e fórum reativado com sucesso.", "denuncia_id": denuncia_id}
+    return {"mensagem": "Denúncia ignorada e removida com sucesso, fórum ativado."}
 
-@app.delete("/admin/foruns/denuncias/{denuncia_id}/apagar", status_code=status.HTTP_200_OK)
-async def apagar_forum_por_denuncia_admin(
+@app.post("/admin/foruns/denuncias/{denuncia_id}/avaliar", status_code=status.HTTP_200_OK)
+async def avaliar_denuncia_forum_admin(
     denuncia_id: int, 
+    payload: dict = Body(...),
     db: AsyncSession = Depends(obter_db), 
     utilizador_email: str = Depends(obter_utilizador_atual)
 ):
@@ -1148,6 +1270,10 @@ async def apagar_forum_por_denuncia_admin(
     if not is_admin:
         raise HTTPException(status_code=403, detail="Acesso restrito a administradores.")
         
+    acao = payload.get("acao")
+    if acao not in ["excluir", "suspender", "ignorar"]:
+        raise HTTPException(status_code=400, detail="Ação inválida. Use 'excluir', 'suspender' ou 'ignorar'.")
+
     den_res = await db.execute(select(models.ForumDenunciaModel).filter(models.ForumDenunciaModel.id == denuncia_id))
     denuncia = den_res.scalars().first()
     if not denuncia:
@@ -1155,13 +1281,27 @@ async def apagar_forum_por_denuncia_admin(
     
     forum_res = await db.execute(select(models.ForumModel).filter(models.ForumModel.id == denuncia.forum_id))
     forum = forum_res.scalars().first()
-    if forum:
-        await db.delete(forum)
-    else:
-        await db.delete(denuncia)
-        
+
+    if acao == "excluir":
+        if forum:
+            await db.delete(forum)
+        denuncia.status = "resolvido_excluido"
+    elif acao == "suspender":
+        dias = int(payload.get("dias_suspensao", 7))
+        if forum:
+            forum.is_suspended = 1
+            forum.suspend_reason = f"Suspenso por denúncia avaliada. Motivo: {denuncia.motivo}"
+            forum.suspended_until = datetime.utcnow() + timedelta(days=dias)
+        denuncia.status = "resolvido_suspenso"
+    elif acao == "ignorar":
+        if forum:
+            forum.is_suspended = 0
+            forum.suspend_reason = None
+            forum.suspended_until = None
+        denuncia.status = "ignorado"
+
     await db.commit()
-    return {"message": "Fórum apagado definitivamente com sucesso.", "denuncia_id": denuncia_id}
+    return {"mensagem": f"Denúncia avaliada com sucesso com a ação: {acao}", "denuncia_id": denuncia_id, "status": denuncia.status}
 
 @app.get("/foruns/{forum_id}/mensagens", response_model=list[schemas.ForumMensagemResponse])
 async def listar_mensagens_forum(forum_id: int, db: AsyncSession = Depends(obter_db)):
@@ -1432,35 +1572,66 @@ async def listar_membros_grupo(
         })
     return resultado    
 
-@app.delete("/grupos/{grupo_id}/membros/{membro_email}", status_code=status.HTTP_200_OK)
+@app.delete("/grupos/{grupo_id}/membros/{membro_id}", status_code=status.HTTP_200_OK)
 async def remover_membro_grupo(
     grupo_id: int, 
-    membro_email: str, 
+    membro_id: str, 
     db: AsyncSession = Depends(obter_db), 
     utilizador_email: str = Depends(obter_utilizador_atual)
 ):
-    email_alvo = membro_email.strip().lower()
-
-    admin_res = await db.execute(select(models.GrupoMembroModel).filter_by(grupo_id=grupo_id, user_email=utilizador_email, role="admin"))
-    admin_check = admin_res.scalars().first()
+    email_atual = utilizador_email.strip().lower()
 
     grupo_res = await db.execute(select(models.GrupoPrivadoModel).filter_by(id=grupo_id))
     grupo = grupo_res.scalars().first()
     
-    is_owner = grupo and grupo.owner_email and grupo.owner_email.lower() == utilizador_email.lower()
+    if not grupo:
+        raise HTTPException(status_code=404, detail="Chat/Grupo não encontrado.")
 
-    if not admin_check and not is_owner:
+    is_owner = grupo.owner_email and grupo.owner_email.strip().lower() == email_atual
+
+    admin_res = await db.execute(
+        select(models.GrupoMembroModel).filter(
+            models.GrupoMembroModel.grupo_id == grupo_id,
+            (models.GrupoMembroModel.user_email.ilike(f"%{email_atual}%")) |
+            (models.GrupoMembroModel.user_email.ilike(f"%{email_atual.split('@')[0]}%"))
+        )
+    )
+    membros_usuario = admin_res.scalars().all()
+    
+    tem_permissao = is_owner or any(m.role == "admin" for m in membros_usuario)
+
+    if not tem_permissao:
         raise HTTPException(status_code=403, detail="Apenas administradores ou o criador do grupo podem excluir utilizadores.")
 
-    membro_res = await db.execute(select(models.GrupoMembroModel).filter_by(grupo_id=grupo_id, user_email=email_alvo))
-    membro_alvo = membro_res.scalars().first()
+    membro_alvo = None
+    membro_id_limpo = urllib.parse.unquote(membro_id).strip().lower()
+
+    if membro_id_limpo.isdigit():
+        membro_res = await db.execute(
+            select(models.GrupoMembroModel).filter_by(grupo_id=grupo_id, id=int(membro_id_limpo))
+        )
+        membro_alvo = membro_res.scalars().first()
+    
     if not membro_alvo:
-        raise HTTPException(status_code=404, detail="Membro não encontrado.")
+        email_alvo = membro_id_limpo
+        if "@" not in email_alvo and not email_alvo.endswith("@ludarium.com"):
+            email_alvo = f"{email_alvo}@ludarium.com"
+        
+        membro_res = await db.execute(
+            select(models.GrupoMembroModel).filter(
+                models.GrupoMembroModel.grupo_id == grupo_id,
+                (models.GrupoMembroModel.user_email.ilike(f"%{email_alvo}%")) |
+                (models.GrupoMembroModel.user_email.ilike(f"%{email_alvo.split('@')[0]}%"))
+            )
+        )
+        membro_alvo = membro_res.scalars().first()
+
+    if not membro_alvo:
+        raise HTTPException(status_code=404, detail="Membro não encontrado no grupo.")
 
     await db.delete(membro_alvo)
     await db.commit()
     return {"mensagem": "Membro removido do chat/grupo com sucesso."}
-
 
 @app.patch("/grupos/{grupo_id}/titulo", status_code=status.HTTP_200_OK)
 async def atualizar_titulo_chat(
@@ -1533,22 +1704,28 @@ async def denunciar_forum(
     db: AsyncSession = Depends(obter_db), 
     utilizador_email: str = Depends(obter_utilizador_atual)
 ):
+    # 1. Verifica se o fórum existe
     forum_res = await db.execute(select(models.ForumModel).filter(models.ForumModel.id == forum_id))
     forum = forum_res.scalars().first()
     if not forum:
         raise HTTPException(status_code=404, detail="Fórum não encontrado")
     
+    # 2. Cria a denúncia com os dados validados pelo Schema Pydantic
     nova_denuncia = models.ForumDenunciaModel(
         forum_id=forum_id,
         autor_email=utilizador_email,
         motivo=denuncia.motivo,
-        evidencia=getattr(denuncia, "evidencia", None)
+        evidencia=denuncia.evidencia, # Já mapeado de forma segura pelo Pydantic
     )
+    
     db.add(nova_denuncia)
     await db.commit()
     await db.refresh(nova_denuncia)
     
-    return {"mensagem": "Denúncia enviada com sucesso. A administração irá analisar.", "id": nova_denuncia.id}
+    return {
+        "mensagem": "Denúncia enviada com sucesso. A administração irá analisar.", 
+        "id": nova_denuncia.id
+    }
 
 @app.get("/usuarios/buscar")
 async def buscar_usuarios(q: str = Query("", description="Termo de busca por nome ou email"), db: AsyncSession = Depends(obter_db), utilizador_email: str = Depends(obter_utilizador_atual)):
@@ -1607,4 +1784,46 @@ async def buscar_usuarios(q: str = Query("", description="Termo de busca por nom
                 "username": username
             })
             
+    return resultado
+
+@app.get("/meus-chats-recrutador")
+async def listar_meus_chats_recrutador(db: AsyncSession = Depends(obter_db), utilizador_email: str = Depends(obter_utilizador_atual)):
+    email_atual = utilizador_email.strip().lower()
+    is_admin = "admin" in email_atual
+
+    pubs_res = await db.execute(select(models.PublicacaoModel))
+    todas_pubs = pubs_res.scalars().all()
+
+    if is_admin:
+        publicacoes = todas_pubs
+    else:
+        publicacoes = [p for p in todas_pubs if p.creator_email and p.creator_email.strip().lower() == email_atual]
+
+    pub_ids = [p.id for p in publicacoes]
+
+    if not pub_ids:
+        return []
+
+    cand_res = await db.execute(
+        select(models.PublicacaoCandidatoModel)
+        .filter(models.PublicacaoCandidatoModel.publicacao_id.in_(pub_ids))
+    )
+    candidaturas = cand_res.scalars().all()
+
+    resultado = []
+    for c in candidaturas:
+        pub = next((p for p in publicacoes if p.id == c.publicacao_id), None)
+        resultado.append({
+            "id": c.id,
+            "candidatura_id": c.id,
+            "publicacao_id": c.publicacao_id,
+            "titulo_vaga": pub.titulo if pub else "Vaga",
+            "candidato_nome": c.nome,
+            "candidato_email": c.user_email,
+            "recrutador": pub.autor if pub else "Recrutador",
+            "recrutador_email": pub.creator_email if pub else "",
+            "status": c.status,
+            "papel": c.papel,
+            "chat_liberado": getattr(c, "chat_liberado", 0)
+        })
     return resultado

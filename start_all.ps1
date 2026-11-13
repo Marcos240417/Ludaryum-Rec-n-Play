@@ -1,4 +1,4 @@
-﻿# Script para iniciar todos os microsserviços do Ludarium em simultâneo
+# Script para iniciar todos os microsserviços do Ludarium em simultâneo
 Write-Host "A iniciar todos os microsserviços do Ludarium..." -ForegroundColor Cyan
 
 # 1. Auth / Gateway Service (Porta 8001)

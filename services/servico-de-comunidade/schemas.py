@@ -175,3 +175,6 @@ class ForumDenunciaResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class MensagemCreateSchema(BaseModel):
+    conteudo: str

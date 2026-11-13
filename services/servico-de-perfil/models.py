@@ -11,6 +11,7 @@ class PerfilModel(Base):
     arroba = Column(String, nullable=False, default="")
     localizacao = Column(String, nullable=False, default="")
     biografia = Column(Text, nullable=False, default="")
+    foto = Column(Text, nullable=False, default="")  # 👈 Alterado para Text para suportar URLs longos e imagens em Base64
     badge_funcao = Column(String, default="NOVO MEMBRO")
     nivel = Column(Integer, default=1)
     xp_atual = Column(Integer, default=0)

@@ -1,1353 +1,928 @@
-// ==========================================
-// LUDARIUM - DASHBOARD & PROJETOS (DASHBOARD.JS)
-// Compatível com Localhost e Cloudflare Tunnel
-// ==========================================
-
-let currentAdminRecipient = null;
-let projetoAtualId = null; // Guarda o ID do jogo em teste para o feedback pós-jogo
-let equipeSelecionada = []; // Guarda os usernames dos membros da equipe selecionados para o projeto
-let equipeSelecionadaEdicao = []; // Guarda os usernames dos membros da equipe selecionados para a edição
-
-/**
- * Exibe uma notificação Toast flutuante elegante no canto inferior direito
- */
-function mostrarToast(mensagem, tipo = 'sucesso') {
-    let container = document.getElementById('toastContainer');
-    if (!container) {
-        container = document.createElement('div');
-        container.id = 'toastContainer';
-        container.style.cssText = "position: fixed; bottom: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 10px;";
-        document.body.appendChild(container);
-    }
-
-    if (!document.getElementById('spinner-style')) {
-        const style = document.createElement('style');
-        style.id = 'spinner-style';
-        style.innerHTML = `@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`;
-        document.head.appendChild(style);
-    }
-
-    const toast = document.createElement('div');
-    const corFundo = tipo === 'sucesso' ? '#7c3aed' : '#ef4444';
-    
-    toast.style.cssText = `background: ${corFundo}; color: #fff; padding: 12px 20px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.4); font-size: 0.9rem; font-weight: 500; opacity: 0; transition: opacity 0.3s ease; border: 1px solid rgba(255,255,255,0.2);`;
-    toast.textContent = mensagem;
-    
-    container.appendChild(toast);
-    
-    setTimeout(() => { toast.style.opacity = '1'; }, 50);
-
-    setTimeout(() => {
-        toast.style.opacity = '0';
-        setTimeout(() => toast.remove(), 300);
-    }, 3500);
+// ================= CONFIGURAÇÃO DE ROTA AUTOMÁTICA (LOCAL PORTA 8081 & CLOUDFLARE) =================
+if (typeof API_BASE_URL === 'undefined') {
+    var API_BASE_URL = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+        ? "http://127.0.0.1:8081" 
+        : `${window.location.protocol}//${window.location.host}`;
 }
 
-/**
- * Controla o estado de carregamento de um botão com um spinner animado
- */
-function definirBotaoCarregamento(botao, aCarregar, textoOriginal = "Guardar Alterações") {
-    if (!botao) return;
-    if (aCarregar) {
-        botao.disabled = true;
-        botao.dataset.textoOriginal = botao.textContent;
-        botao.innerHTML = `<span style="display: inline-block; width: 14px; height: 14px; border: 2px solid #fff; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 8px; vertical-align: middle;"></span> A processar...`;
-    } else {
-        botao.disabled = false;
-        botao.textContent = botao.dataset.textoOriginal || textoOriginal;
-    }
-}
-
-/**
- * Função auxiliar para obter o token JWT de forma segura
- */
+// Obter token JWT armazenado na sessão (isolado por aba)
 function obterToken() {
-    let token = localStorage.getItem('ludarium_token') || localStorage.getItem('access_token');
-    if (!token) {
-        window.location.href = '../home-ui/login.html';
-    }
-    return token;
+    return sessionStorage.getItem("ludaryumToken") || localStorage.getItem("ludaryumToken") || sessionStorage.getItem("ludarium_token") || localStorage.getItem("ludarium_token") || "";
 }
 
-/**
- * Extrai o utilizador atual diretamente do token JWT de forma síncrona e segura
- */
-function obterUtilizadorAtualDoToken() {
-    const token = obterToken();
-    if (!token) return '';
+const areaProjetos = document.getElementById("projetos-criados");
+const campoBusca = document.getElementById("busca-projetos");
+const botoesFiltro = document.querySelectorAll(".filtro-projeto");
+const areaCards = document.querySelector(".projetos .cards");
+
+let filtroAtual = "todos";
+let buscaAtual = "";
+let listaProjetosCache = [];
+
+async function obterProjetosCriados() {
     try {
-        const base64Url = token.split('.')[1];
-        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-        const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
-        const payload = JSON.parse(jsonPayload);
-        return (payload.sub || payload.email || payload.username || '').trim().toLowerCase();
-    } catch (e) {
-        return '';
+        const resposta = await fetch(`${API_BASE_URL}/projects`, {
+            headers: { "Authorization": `Bearer ${obterToken()}` }
+        });
+        if (!resposta.ok) return [];
+        const dados = await resposta.json();
+        return Array.isArray(dados) ? dados : [];
+    } catch (erro) {
+        console.error("Erro ao carregar projetos do servidor (porta 8081):", erro);
+        return [];
     }
 }
 
-/**
- * Captura o token da URL IMEDIATAMENTE quando o script é lido
- */
-(function() {
-    const urlParams = new URLSearchParams(window.location.search);
-    const tokenUrl = urlParams.get('token');
-    if (tokenUrl) {
-        localStorage.setItem('ludarium_token', tokenUrl);
-        window.history.replaceState({}, document.title, window.location.pathname);
-    }
-})();
+function normalizar(texto) {
+    return String(texto || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+}
 
-/**
- * Intercepta cliques nos links de navegação do menu para propagar o token atual na URL
- */
-document.addEventListener("DOMContentLoaded", () => {
-    const linksMenu = document.querySelectorAll('.nav-links a');
-    linksMenu.forEach(link => {
-        link.addEventListener('click', (e) => {
-            const token = obterToken();
-            if (token) {
-                e.preventDefault();
-                try {
-                    const urlDestino = new URL(link.href, window.location.origin);
-                    urlDestino.searchParams.set('token', token);
-                    window.location.href = urlDestino.toString();
-                } catch (err) {
-                    window.location.href = link.href;
+function configurarCard(card, projeto) {
+    card.style.cursor = "pointer";
+    card.title = "Clique para jogar diretamente";
+
+    card.addEventListener("click", function (evento) {
+        if (evento.target.closest("button") || evento.target.closest(".btn-excluir")) {
+            return;
+        }
+
+        // Verifica se o projeto possui build web executável
+        if (projeto.executavel_navegador === 1 && projeto.build_path) {
+            const modalPlayer = document.getElementById("modal-player-jogo");
+            const iframe = document.getElementById("iframe-jogo-home");
+            const tituloPlayer = document.getElementById("titulo-player-jogo");
+            const descPlayer = document.getElementById("descricao-player-jogo");
+
+            if (modalPlayer && iframe) {
+                tituloPlayer.textContent = `🎮 ${projeto.title || "Jogo"}`;
+                if (descPlayer) descPlayer.textContent = projeto.description || "";
+
+                // Guarda o ID do projeto atual no modal para uso posterior ao fechar
+                modalPlayer.setAttribute("data-projeto-id", projeto.id);
+
+                // Garante que o caminho do build aponte corretamente para o index.html
+                let caminhoBuild = String(projeto.build_path).trim();
+                
+                if (!caminhoBuild.endsWith("index.html")) {
+                    caminhoBuild = caminhoBuild.endsWith("/") ? `${caminhoBuild}index.html` : `${caminhoBuild}/index.html`;
                 }
+
+                if (caminhoBuild.startsWith("/")) {
+                    caminhoBuild = caminhoBuild.substring(1);
+                }
+
+                const urlBuildFinal = `${API_BASE_URL}/${caminhoBuild}`;
+                
+                console.log("A carregar build do jogo em:", urlBuildFinal);
+
+                iframe.src = urlBuildFinal;
+                modalPlayer.style.display = "flex";
+                modalPlayer.setAttribute("aria-hidden", "false");
+                document.body.style.overflow = "hidden";
+            }
+        } else {
+            alert("Este projeto não possui um build web executável no navegador.");
+        }
+    });
+}
+
+// =========================================================================
+// CONTROLO DO PLAYER, FECHO COM AVALIAÇÃO, XP E FEEDBACK NA HOME
+// =========================================================================
+document.addEventListener("DOMContentLoaded", () => {
+    const modalPlayer = document.getElementById("modal-player-jogo");
+    const botaoFecharPlayer = document.getElementById("fechar-modal-player");
+    const iframe = document.getElementById("iframe-jogo-home");
+    const containerIframe = document.getElementById("container-iframe-jogo");
+    const btnToggleSom = document.getElementById("btn-toggle-som");
+    const btnFullscreen = document.getElementById("btn-fullscreen");
+
+    let jogoMutado = false;
+
+    // Função para abrir o modal de avaliação e ganho de XP ao fechar o jogo
+    function dispararModalAvaliacao(projetoId) {
+        if (!projetoId) return;
+        
+        let modalAvaliacao = document.getElementById("modal-avaliacao-feedback");
+        if (!modalAvaliacao) {
+            modalAvaliacao = document.createElement("div");
+            modalAvaliacao.id = "modal-avaliacao-feedback";
+            modalAvaliacao.className = "modal-projeto-overlay";
+            modalAvaliacao.style.cssText = "display: flex; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 9999; justify-content: center; align-items: center;";
+            modalAvaliacao.innerHTML = `
+                <div class="modal-projeto-conteudo" style="background: #1e293b; padding: 25px; border-radius: 12px; max-width: 450px; width: 90%; color: #f8fafc; border: 1px solid #38bdf8;">
+                    <span class="etiqueta" style="color: #38bdf8; font-size: 12px; font-weight: bold;">⭐ AVALIAÇÃO DO JOGO</span>
+                    <h3 style="margin: 10px 0; color: #fff;">O que achou da experiência?</h3>
+                    <p style="color: #94a3b8; font-size: 13px; margin-bottom: 15px;">Avalie o jogo e deixe um feedback para garantir <strong style="color: #38bdf8;">+75 XP</strong> no seu perfil!</p>
+                    
+                    <div id="estrelas-avaliacao" style="font-size: 28px; cursor: pointer; margin-bottom: 15px; text-align: center;">
+                        <span data-estrela="1">☆</span><span data-estrela="2">☆</span><span data-estrela="3">☆</span><span data-estrela="4">☆</span><span data-estrela="5">☆</span>
+                    </div>
+
+                    <textarea id="texto-feedback-jogo" placeholder="Deixe um comentário construtivo para o criador..." style="width: 100%; height: 80px; background: #0f172a; border: 1px solid #334155; color: #fff; padding: 10px; border-radius: 6px; margin-bottom: 15px; resize: none;"></textarea>
+                    
+                    <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                        <button type="button" id="btn-pular-avaliacao" style="background: transparent; border: 1px solid #64748b; color: #94a3b8; padding: 8px 14px; border-radius: 6px; cursor: pointer;">Pular</button>
+                        <button type="button" id="btn-enviar-avaliacao" style="background: #38bdf8; border: none; color: #0f172a; font-weight: bold; padding: 8px 16px; border-radius: 6px; cursor: pointer;">Enviar e Garantir XP</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modalAvaliacao);
+
+            let estrelasSelecionadas = 0;
+            const spansEstrelas = modalAvaliacao.querySelectorAll("#estrelas-avaliacao span");
+            spansEstrelas.forEach(s => {
+                s.addEventListener("click", (e) => {
+                    estrelasSelecionadas = parseInt(e.target.getAttribute("data-estrela"));
+                    spansEstrelas.forEach((st, idx) => {
+                        st.textContent = idx < estrelasSelecionadas ? "★" : "☆";
+                        st.style.color = idx < estrelasSelecionadas ? "#f59e0b" : "#fff";
+                    });
+                });
+            });
+
+            modalAvaliacao.querySelector("#btn-pular-avaliacao").addEventListener("click", () => {
+                modalAvaliacao.style.display = "none";
+            });
+
+            modalAvaliacao.querySelector("#btn-enviar-avaliacao").addEventListener("click", async () => {
+                const comentario = modalAvaliacao.querySelector("#texto-feedback-jogo").value.trim();
+                
+                try {
+                    // Envia avaliação/comentário para o projeto
+                    await fetch(`${API_BASE_URL}/projects/${projetoId}/comentarios`, {
+                        method: "POST",
+                        headers: { 
+                            "Authorization": `Bearer ${obterToken()}`,
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify({ conteudo: `[Avaliação ⭐${estrelasSelecionadas}] ${comentario || "Excelente jogo!"}` })
+                    });
+
+                    // Credita +75 XP no perfil do utilizador
+                    await fetch(`${API_BASE_URL}/projects/${projetoId}/testar`, {
+                        method: "POST",
+                        headers: { 
+                            "Authorization": `Bearer ${obterToken()}`,
+                            "Content-Type": "application/json"
+                        }
+                    });
+
+                    alert("🎉 Feedback enviado com sucesso! +75 XP adicionados ao seu perfil.");
+                } catch (err) {
+                    console.error("Erro ao submeter feedback:", err);
+                    alert("Feedback guardado, mas ocorreu um erro ao sincronizar o XP.");
+                }
+
+                modalAvaliacao.style.display = "none";
+            });
+        } else {
+            modalAvaliacao.style.display = "flex";
+        }
+    }
+
+    if (modalPlayer && botaoFecharPlayer) {
+        const fecharPlayer = () => {
+            const projetoIdAtivo = modalPlayer.getAttribute("data-projeto-id");
+
+            modalPlayer.style.display = "none";
+            modalPlayer.setAttribute("aria-hidden", "true");
+            document.body.style.overflow = "";
+            if (iframe) iframe.src = ""; // Para o jogo e áudio ao fechar
+            
+            // Sai do fullscreen se estiver ativo
+            if (document.fullscreenElement) {
+                document.exitFullscreen().catch(() => {});
+            }
+            
+            // Reseta o estado do som
+            jogoMutado = false;
+            if (btnToggleSom) {
+                btnToggleSom.textContent = "🔊 Som Ativo";
+                btnToggleSom.style.borderColor = "#38bdf8";
+                btnToggleSom.style.color = "#38bdf8";
+            }
+
+            // Dispara o modal de avaliação e ganho de XP assim que o player é fechado
+            if (projetoIdAtivo) {
+                dispararModalAvaliacao(projetoIdAtivo);
+            }
+        };
+
+        botaoFecharPlayer.addEventListener("click", fecharPlayer);
+        modalPlayer.addEventListener("click", (e) => {
+            if (e.target === modalPlayer) fecharPlayer();
+        });
+        document.addEventListener("keydown", (e) => {
+            if (e.key === "Escape" && modalPlayer.style.display === "flex") fecharPlayer();
+        });
+    }
+
+    // Botão de Controlar Som (Ativar / Desativar áudio do Iframe)
+    if (btnToggleSom && iframe) {
+        btnToggleSom.addEventListener("click", () => {
+            jogoMutado = !jogoMutado;
+            try {
+                if (jogoMutado) {
+                    iframe.contentWindow.postMessage('{"action":"mute"}', '*');
+                    btnToggleSom.textContent = "🔇 Mudo";
+                    btnToggleSom.style.borderColor = "#ef4444";
+                    btnToggleSom.style.color = "#ef4444";
+                } else {
+                    iframe.contentWindow.postMessage('{"action":"unmute"}', '*');
+                    btnToggleSom.textContent = "🔊 Som Ativo";
+                    btnToggleSom.style.borderColor = "#38bdf8";
+                    btnToggleSom.style.color = "#38bdf8";
+                }
+            } catch (err) {
+                console.log("Controle de som via postMessage ajustado.");
             }
         });
-    });
-
-    const formFeedback = document.getElementById('form-feedback-jogo');
-    if (formFeedback) {
-        formFeedback.addEventListener('submit', async function(event) {
-            event.preventDefault();
-            const projectId = document.getElementById('feedback-project-id').value;
-            const nota = document.getElementById('nota-jogo').value;
-            const comentario = document.getElementById('comentario-jogo').value;
-
-            await submeterFeedbackJogo(projectId, nota, comentario);
-        });
     }
 
-    document.addEventListener('click', (e) => {
-        const dropdown = document.getElementById('notificationsDropdown');
-        const notifContainer = document.querySelector('.nav-notifications');
-        if (dropdown && dropdown.style.display === 'block' && notifContainer && !notifContainer.contains(e.target)) {
-            dropdown.style.display = 'none';
+    // Botão de Expandir Tela (Fullscreen)
+    if (btnFullscreen && containerIframe) {
+        btnFullscreen.addEventListener("click", () => {
+            if (!document.fullscreenElement) {
+                if (containerIframe.requestFullscreen) {
+                    containerIframe.requestFullscreen();
+                } else if (containerIframe.webkitRequestFullscreen) {
+                    containerIframe.webkitRequestFullscreen();
+                } else if (containerIframe.msRequestFullscreen) {
+                    containerIframe.msRequestFullscreen();
+                }
+                if (iframe) iframe.style.height = "100vh";
+                btnFullscreen.textContent = "⤓ Normal";
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                }
+                if (iframe) iframe.style.height = "550px";
+                btnFullscreen.textContent = "⛶ Tela Cheia";
+            }
+        });
+
+        document.addEventListener("fullscreenchange", () => {
+            if (!document.fullscreenElement && iframe) {
+                iframe.style.height = "550px";
+                if (btnFullscreen) btnFullscreen.textContent = "⛶ Tela Cheia";
+            }
+        });
+    }
+});
+
+function normalizarTags(tagsInput) {
+    if (Array.isArray(tagsInput)) return tagsInput;
+    if (typeof tagsInput === 'string') {
+        return tagsInput.split(',').map(t => t.trim()).filter(Boolean);
+    }
+    return [];
+}
+
+function criarCardProjeto(projeto) {
+    const card = document.createElement("article");
+    card.className = "card projeto-dinamico";
+
+    const capa = document.createElement("div");
+    const formato = projeto.formatoCapa || "horizontal";
+    const ajuste = projeto.ajusteCapa || "preencher";
+
+    capa.className = "capa capa-1 capa-" + formato;
+
+    if (projeto.poster_path) {
+        const imagem = document.createElement("img");
+        const urlPoster = projeto.poster_path.startsWith("http") ? projeto.poster_path : `${API_BASE_URL}${projeto.poster_path}`;
+        imagem.src = urlPoster;
+        imagem.alt = "Capa do projeto " + (projeto.title || "");
+        imagem.style.width = "100%";
+        imagem.style.height = "100%";
+        imagem.style.objectFit = ajuste === "inteira" ? "contain" : "cover";
+        imagem.style.display = "block";
+        capa.appendChild(imagem);
+    } else {
+        capa.textContent = "✦ " + String(projeto.studio || "PROJETO").toUpperCase();
+    }
+
+    const tagsArray = normalizarTags(projeto.tags);
+
+    const informacoes = document.createElement("div");
+    informacoes.className = "card-info";
+
+    const categoria = document.createElement("span");
+    categoria.textContent = "◉ " + (tagsArray.length > 0 ? tagsArray[0] : "Sem categoria");
+
+    const titulo = document.createElement("h3");
+    titulo.textContent = projeto.title || "Projeto sem nome";
+
+    const indicadorComentarios = document.createElement("span");
+    indicadorComentarios.textContent = "💬 " + (projeto.comments_count || 0) + " Comentários";
+    indicadorComentarios.className = "indicador-comentarios ativado";
+    indicadorComentarios.title = "Este projeto permite comentários e feedbacks";
+
+    const descricao = document.createElement("p");
+    descricao.textContent = projeto.description || "Sem descrição disponível.";
+
+    const versao = document.createElement("small");
+    versao.className = "versao-card";
+    versao.textContent = "Status: " + (projeto.status || "Ativo");
+
+    const progressoContainer = document.createElement("div");
+    progressoContainer.className = "progresso-card";
+
+    const progressoTexto = document.createElement("small");
+    progressoTexto.textContent = "Progresso: " + (projeto.progress || 0) + "%";
+
+    const progressoBarra = document.createElement("div");
+    progressoBarra.className = "progresso-barra";
+
+    const progressoPreenchimento = document.createElement("div");
+    progressoPreenchimento.className = "progresso-preenchimento";
+    progressoPreenchimento.style.width = (projeto.progress || 0) + "%";
+
+    progressoBarra.appendChild(progressoPreenchimento);
+    progressoContainer.append(progressoTexto, progressoBarra);
+
+    const areaTags = document.createElement("div");
+    areaTags.className = "tags-card";
+
+    tagsArray.forEach(function (tag) {
+        const etiqueta = document.createElement("span");
+        etiqueta.className = "tag-card";
+        etiqueta.textContent = tag;
+        areaTags.appendChild(etiqueta);
+    });
+
+    const status = document.createElement("small");
+    status.textContent = "Criador: " + (projeto.owner || "Comunidade");
+
+    const visibilidade = document.createElement("span");
+    visibilidade.className = "visibilidade-card publico";
+    visibilidade.textContent = "🌐 PÚBLICO";
+    capa.appendChild(visibilidade);
+
+    const botaoExcluir = document.createElement("button");
+    botaoExcluir.textContent = "🗑️ Excluir";
+    botaoExcluir.className = "btn-excluir";
+    botaoExcluir.type = "button";
+
+    configurarCard(card, projeto);
+
+    // Verificação rigorosa do utilizador logado versus o dono do projeto
+    const usuarioLogadoEmail = (
+        sessionStorage.getItem("ludaryumEmail") || 
+        localStorage.getItem("ludaryumEmail") || 
+        sessionStorage.getItem("ludaryumNome") || 
+        localStorage.getItem("ludaryumNome") || 
+        ""
+    ).trim().toLowerCase();
+
+    const donoProjeto = (projeto.owner || projeto.user_id || "").trim().toLowerCase();
+
+    // Só exibe e aplica a ação de exclusão se o utilizador logado for o dono real do projeto
+    if (usuarioLogadoEmail && donoProjeto && usuarioLogadoEmail === donoProjeto) {
+        botaoExcluir.style.display = "inline-block";
+
+        botaoExcluir.addEventListener("click", function (evento) {
+            evento.stopPropagation();
+
+            const modal = document.getElementById("modal-confirmacao");
+            const botaoCancelar = document.getElementById("cancelar-exclusao");
+            const botaoConfirmar = document.getElementById("confirmar-exclusao");
+
+            if (!modal || !botaoCancelar || !botaoConfirmar) {
+                console.error("Janela de confirmação não encontrada.");
+                return;
+            }
+
+            modal.style.display = "flex";
+
+            function fecharModal() {
+                modal.style.display = "none";
+                botaoCancelar.removeEventListener("click", cancelar);
+                botaoConfirmar.removeEventListener("click", confirmar);
+            }
+
+            function cancelar() {
+                fecharModal();
+            }
+
+            async function confirmar() {
+                try {
+                    const resposta = await fetch(`${API_BASE_URL}/projects/${projeto.id}`, {
+                        method: "DELETE",
+                        headers: { "Authorization": `Bearer ${obterToken()}` }
+                    });
+                    if (resposta.ok) {
+                        fecharModal();
+                        carregarProjetos();
+                    } else {
+                        alert("Erro ao excluir o projeto.");
+                    }
+                } catch (erro) {
+                    console.error("Erro na exclusão:", erro);
+                }
+            }
+
+            botaoCancelar.addEventListener("click", cancelar);
+            botaoConfirmar.addEventListener("click", confirmar);
+        });
+    } else {
+        // Se não for o dono, oculta completamente o botão de exclusão
+        botaoExcluir.style.display = "none";
+    }
+
+    informacoes.append(
+        categoria,
+        titulo,
+        indicadorComentarios,
+        descricao,
+        versao,
+        progressoContainer,
+        areaTags,
+        status,
+        botaoExcluir
+    );
+    card.append(capa, informacoes);
+
+    return card;
+}
+
+function correspondeAoFiltro(projeto) {
+    const tagsProj = normalizarTags(projeto.tags).map(t => normalizar(t));
+    const tituloProj = normalizar(projeto.title);
+    const descProj = normalizar(projeto.description);
+
+    const correspondeBusca = tituloProj.includes(normalizar(buscaAtual)) || descProj.includes(normalizar(buscaAtual));
+    const correspondeCategoria = filtroAtual === "todos" || tagsProj.includes(normalizar(filtroAtual));
+
+    return correspondeBusca && correspondeCategoria;
+}
+
+function atualizarProjetosVisiveis() {
+    if (!areaProjetos) return;
+
+    areaProjetos.innerHTML = "";
+    let quantidadeVisivel = 0;
+
+    listaProjetosCache.forEach(function (projeto) {
+        if (correspondeAoFiltro(projeto)) {
+            areaProjetos.appendChild(criarCardProjeto(projeto));
+            quantidadeVisivel++;
         }
     });
 
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-            fecharModalProjeto();
-            fecharModalEditar();
-            closeAdminMessageModal();
-            fecharModalFeedbackSemXP();
-            const dropdown = document.getElementById('notificationsDropdown');
-            if (dropdown) dropdown.style.display = 'none';
-        }
+    let mensagem = document.getElementById("nenhum-projeto");
+
+    if (!mensagem) {
+        mensagem = document.createElement("p");
+        mensagem.id = "nenhum-projeto";
+        mensagem.className = "mensagem-pessoas";
+        mensagem.textContent = "Nenhum projeto encontrado.";
+        areaProjetos.appendChild(mensagem);
+    }
+
+    mensagem.hidden = quantidadeVisivel > 0;
+}
+
+async function carregarProjetos() {
+    if (!areaProjetos) return;
+    listaProjetosCache = await obterProjetosCriados();
+    atualizarProjetosVisiveis();
+}
+
+if (campoBusca) {
+    campoBusca.addEventListener("input", function () {
+        buscaAtual = campoBusca.value;
+        atualizarProjetosVisiveis();
+    });
+}
+
+botoesFiltro.forEach(function (botao) {
+    botao.addEventListener("click", function () {
+        filtroAtual = botao.dataset.filtro || "todos";
+
+        botoesFiltro.forEach(function (outroBotao) {
+            outroBotao.classList.toggle("ativo", outroBotao === botao);
+        });
+
+        atualizarProjetosVisiveis();
     });
 });
 
-/**
- * Verifica a sessão ao carregar a página principal (home.html)
- */
-async function verificarSessaoDashboard() {
-    const token = obterToken();
-    if (!token) return;
-    
-    atualizarPerfilMenu(token).catch(e => console.warn('Aviso: Perfil indisponível', e));
-    carregarProjetosHome().catch(e => console.error('Erro ao carregar projetos:', e));
-    carregarMensagensPrivadas().catch(e => console.warn('Aviso: Mensagens indisponíveis', e));
-    carregarProjetosSobInspecaoUsuario().catch(e => console.warn('Aviso: Inspeções indisponíveis', e));
-    verificarPermissoesAdmin().catch(e => console.warn('Aviso: Permissões admin indisponíveis', e));
-    carregarNotificacoes().catch(e => console.warn('Aviso: Notificações indisponíveis', e));
-    carregarCampanhasNoSelect().catch(e => console.warn('Aviso: Campanhas indisponíveis', e));
-    carregarLeaderboard().catch(e => console.warn('Aviso: Leaderboard indisponível', e));
-}
+carregarProjetos();
 
-/**
- * Verifica estritamente as permissões de administrador e isola elementos UI exclusivos
- */
-async function verificarPermissoesAdmin() {
-    const token = obterToken();
-    if (!token) return;
+const botaoProjetosAnterior = document.getElementById("projetos-anterior");
+const botaoProjetosProxima = document.getElementById("projetos-proxima");
+const trilhoProjetos = document.getElementById("projetos-criados");
 
-    try {
-        const response = await fetch(`/me`, {
-            headers: { 'Authorization': 'Bearer ' + token }
+if (botaoProjetosAnterior && trilhoProjetos) {
+    botaoProjetosAnterior.addEventListener("click", function () {
+        trilhoProjetos.scrollBy({
+            left: -300,
+            behavior: "smooth"
         });
-        if (!response.ok) return;
-        const user = await response.json();
-
-        const isAdmin = (user.username === 'admin' || user.email === 'admin@ludarium.com' || user.is_admin === true);
-
-        const elementosAdminExclusivos = document.querySelectorAll('.admin-only');
-        
-        if (isAdmin) {
-            console.log('Sessão de Administrador Real autenticada.');
-            elementosAdminExclusivos.forEach(el => {
-                el.classList.remove('admin-only');
-                el.style.display = 'block';
-            });
-        } else {
-            elementosAdminExclusivos.forEach(el => {
-                el.classList.add('admin-only');
-                el.style.display = 'none';
-            });
-        }
-    } catch (e) {
-        console.error('Erro ao verificar permissões de admin:', e);
-    }
-}
-
-/**
- * Termina a sessão do utilizador com redirecionamento relativo seguro
- */
-function fazerLogout() {
-    localStorage.removeItem('ludarium_token');
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('ludarium_user');
-    window.location.href = '../home-ui/login.html';
-}
-
-function abrirModalProjeto() {
-    const modal = document.getElementById('modalProjeto');
-    if (modal) modal.style.display = 'flex';
-}
-
-function fecharModalProjeto() {
-    const modal = document.getElementById('modalProjeto');
-    if (modal) modal.style.display = 'none';
-    
-    equipeSelecionada = [];
-    atualizarListaEquipeUI();
-}
-
-function fecharModalNovoProjeto() {
-    fecharModalProjeto();
-}
-
-/**
- * Carrega as campanhas / Game Jams disponíveis
- */
-async function carregarCampanhasNoSelect() {
-    const select = document.getElementById('projCampaignSelect');
-    if (!select) return;
-
-    try {
-        const response = await fetch(`/campanhas`);
-        if (!response.ok) return;
-        const campanhas = await response.json();
-
-        if (Array.isArray(campanhas)) {
-            select.innerHTML = '<option value="">Nenhuma (Projeto Independente Geral)</option>';
-            campanhas.forEach(c => {
-                const option = document.createElement('option');
-                option.value = c.id || 1;
-                option.textContent = c.titulo || c.title;
-                select.appendChild(option);
-            });
-        }
-    } catch (e) {
-        console.error('Erro ao carregar campanhas para o select:', e);
-    }
-}
-
-async function pesquisarMembroEquipe() {
-    const termo = document.getElementById('memberSearchInput').value.trim();
-    const resultDiv = document.getElementById('memberSearchResult');
-    const token = obterToken();
-
-    if (!termo) {
-        resultDiv.innerHTML = '<span style="color: #fca5a5;">Digite um username para pesquisar.</span>';
-        return;
-    }
-
-    resultDiv.innerHTML = 'A pesquisar...';
-
-    try {
-        const response = await fetch(`/users/search?username=${encodeURIComponent(termo)}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-
-        if (!response.ok) throw new Error('Utilizador não encontrado.');
-
-        const user = await response.json();
-        
-        if (equipeSelecionada.includes(user.username)) {
-            resultDiv.innerHTML = '<span style="color: #fca5a5;">Este utilizador já faz parte da equipe.</span>';
-            return;
-        }
-
-        resultDiv.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(124, 58, 237, 0.15); padding: 8px; border-radius: 6px; border: 1px solid #7c3aed;">
-                <span>👤 <strong>${user.username}</strong> (${user.email})</span>
-                <button type="button" onclick="adicionarMembroEquipe('${user.username}')" style="background: #10b981; color: #fff; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; font-weight: bold;">+ Adicionar</button>
-            </div>
-        `;
-    } catch (error) {
-        resultDiv.innerHTML = `<span style="color: #fca5a5;">⚠️ ${error.message}</span>`;
-    }
-}
-
-function adicionarMembroEquipe(username) {
-    if (!equipeSelecionada.includes(username)) {
-        equipeSelecionada.push(username);
-        atualizarListaEquipeUI();
-    }
-    document.getElementById('memberSearchInput').value = '';
-    document.getElementById('memberSearchResult').innerHTML = '';
-}
-
-function removerMembroEquipe(username) {
-    equipeSelecionada = equipeSelecionada.filter(m => m !== username);
-    atualizarListaEquipeUI();
-}
-
-function atualizarListaEquipeUI() {
-    const listDiv = document.getElementById('selectedTeamList');
-    const hiddenField = document.getElementById('projMembersField');
-    
-    if (!listDiv || !hiddenField) return;
-
-    listDiv.innerHTML = '';
-    hiddenField.value = equipeSelecionada.join(',');
-
-    if (equipeSelecionada.length === 0) {
-        listDiv.innerHTML = '<span style="color: #9ca3af; font-size: 0.8rem;">Nenhum integrante adicionado ainda.</span>';
-        return;
-    }
-
-    equipeSelecionada.forEach(username => {
-        const chip = document.createElement('div');
-        chip.style.cssText = "background: #7c3aed; color: #fff; padding: 4px 10px; border-radius: 15px; font-size: 0.8rem; display: flex; align-items: center; gap: 6px;";
-        chip.innerHTML = `
-            <span>@${username}</span>
-            <button type="button" onclick="removerMembroEquipe('${username}')" style="background: none; border: none; color: #fff; cursor: pointer; font-weight: bold; font-size: 0.9rem; padding: 0;">&times;</button>
-        `;
-        listDiv.appendChild(chip);
     });
 }
 
-/**
- * Submete um novo projeto incluindo o GitHub, Código Aberto e Termos LGPD/Normas
- */
-async function enviarNovoProjeto(event) {
-    event.preventDefault();
-    const token = obterToken();
-
-    const form = event.target;
-    const formData = new FormData();
-
-    formData.append('title', document.getElementById('projTitle').value);
-    formData.append('studio', 'Estúdio Independente');
-    formData.append('description', document.getElementById('projDesc').value);
-    formData.append('tags', document.getElementById('projTags').value);
-    formData.append('progress', document.getElementById('projProgress').value);
-    formData.append('executavel_navegador', document.getElementById('projExecutavel').checked ? '1' : '0');
-    
-    // --- CAMPOS NOVOS DO GITHUB E COMPLIANCE ---
-    const githubUrl = document.getElementById('projGithubUrl') ? document.getElementById('projGithubUrl').value : '';
-    if (githubUrl) {
-        formData.append('github_url', githubUrl);
-    }
-    
-    const codigoAberto = document.getElementById('projCodigoAberto') ? document.getElementById('projCodigoAberto').checked : false;
-    formData.append('codigo_aberto', codigoAberto ? 'true' : 'false');
-
-    const aceiteLgpd = document.getElementById('projCheckLgpd') ? document.getElementById('projCheckLgpd').checked : false;
-    const aceiteNormas = document.getElementById('projCheckNormas') ? document.getElementById('projCheckNormas').checked : false;
-
-    if (!aceiteLgpd || !aceiteNormas) {
-        mostrarToast('É obrigatório aceitar a LGPD e as Normas e Garantias da Ludarium.', 'erro');
-        return;
-    }
-
-    formData.append('aceite_lgpd', aceiteLgpd ? 'true' : 'false');
-    formData.append('aceite_normas', aceiteNormas ? 'true' : 'false');
-    // -------------------------------------------
-
-    const campaignId = document.getElementById('projCampaignSelect').value;
-    if (campaignId) {
-        formData.append('campaign_id', campaignId);
-    }
-
-    const membersStr = document.getElementById('projMembersField').value;
-    if (membersStr) {
-        formData.append('members', membersStr);
-    }
-
-    const zipInput = document.getElementById('projZip');
-    if (zipInput && zipInput.files[0]) {
-        formData.append('build_file', zipInput.files[0]);
-    }
-
-    const posterInput = document.getElementById('projPoster');
-    if (posterInput && posterInput.files[0]) {
-        formData.append('poster', posterInput.files[0]);
-    }
-
-    try {
-        const response = await fetch(`/projects`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` },
-            body: formData
+if (botaoProjetosProxima && trilhoProjetos) {
+    botaoProjetosProxima.addEventListener("click", function () {
+        trilhoProjetos.scrollBy({
+            left: 300,
+            behavior: "smooth"
         });
-
-        if (!response.ok) {
-            const errJson = await response.json().catch(() => ({}));
-            throw new Error(errJson.detail || `Erro ao criar projeto: ${response.status}`);
-        }
-
-        fecharModalProjeto();
-        carregarProjetosHome();
-        carregarProjetosSobInspecaoUsuario();
-        form.reset();
-        mostrarToast('Projeto publicado com sucesso!', 'sucesso');
-    } catch (error) {
-        console.error('Erro na submissão:', error);
-        mostrarToast(error.message || 'Erro ao criar projeto.', 'erro');
-    }
+    });
 }
 
-/**
- * Carrega a lista de projetos na Home, exibindo botão de GitHub e acesso total se código aberto.
- */
-async function carregarProjetosHome(tagFiltro = '') {
-    const grid = document.getElementById('projectsGrid');
-    if (!grid) return;
-    
-    grid.innerHTML = '<p style="color: #9ca3af; padding: 10px;">A carregar projetos...</p>';
+/* ===== CONTROLO DO MODAL DE CRIAR PROJETO ===== */
+const modalProjeto = document.getElementById("modal-projeto");
+const botaoAbrirModal = document.getElementById("abrir-modal-projeto");
+const botaoFecharModal = document.getElementById("fechar-modal-projeto");
+const formCriarProjeto = document.getElementById("form-projeto") || document.getElementById("formCriarProjeto");
 
-    try {
-        let url = `/projects`;
-        if (tagFiltro && tagFiltro.trim() !== '') {
-            url += `?tag=${encodeURIComponent(tagFiltro)}`;
+if (modalProjeto && botaoAbrirModal) {
+    botaoAbrirModal.addEventListener("click", function (e) {
+        if (e) e.preventDefault();
+        modalProjeto.style.display = "flex";
+        modalProjeto.setAttribute("aria-hidden", "false");
+        document.body.style.overflow = "hidden";
+
+        const primeiroCampo = document.getElementById("nome-projeto");
+        if (primeiroCampo) primeiroCampo.focus();
+    });
+}
+
+if (formCriarProjeto) {
+    formCriarProjeto.addEventListener("submit", async function (e) {
+        e.preventDefault();
+
+        const formData = new FormData();
+        formData.append("title", document.getElementById("nome-projeto")?.value || "");
+        formData.append("categoria", document.getElementById("categoria")?.value || "");
+        formData.append("campanha", document.getElementById("campanha-projeto")?.value || "");
+        formData.append("description", document.getElementById("descricao")?.value || "");
+        formData.append("visibilidade", document.getElementById("visibilidade-projeto")?.value || "publico");
+        formData.append("comentarios", document.getElementById("comentarios-projeto")?.value || "sim");
+        formData.append("versao", document.getElementById("versao-projeto")?.value || "1.0.0");
+        formData.append("progress", document.getElementById("progresso-projeto")?.value || "0");
+        formData.append("repositorio", document.getElementById("repositorio-projeto")?.value || "");
+        formData.append("formatoCapa", document.getElementById("formato-capa")?.value || "horizontal");
+        formData.append("ajusteCapa", document.getElementById("ajuste-capa")?.value || "preencher");
+
+        const inputZip = document.getElementById("build-zip");
+        if (inputZip && inputZip.files[0]) {
+            formData.append("build_file", inputZip.files[0]);
         }
 
-        const response = await fetch(url);
-        if (!response.ok) {
-            throw new Error(`Erro ao buscar projetos (Status: ${response.status})`);
-        }
-        
-        const projetos = await response.json();
-        grid.innerHTML = '';
-
-        if (!Array.isArray(projetos) || projetos.length === 0) {
-            grid.innerHTML = '<p style="color: #9ca3af; padding: 10px;">Nenhum projeto encontrado.</p>';
-            return;
+        const inputCapa = document.getElementById("imagem-projeto");
+        if (inputCapa && inputCapa.files[0]) {
+            formData.append("poster", inputCapa.files[0]);
         }
 
-        const usuarioLogado = obterUtilizadorAtualDoToken();
-        const token = obterToken();
-        
-        let éAdmin = (usuarioLogado === 'admin' || usuarioLogado === 'admin@ludarium.com');
         try {
-            const meRes = await fetch(`/me`, { headers: { 'Authorization': 'Bearer ' + token } });
-            if (meRes.ok) {
-                const meData = await meRes.json();
-                éAdmin = (meData.username === 'admin' || meData.email === 'admin@ludarium.com' || meData.is_admin === true);
-            }
-        } catch (e) {}
+            const resposta = await fetch(`${API_BASE_URL}/projects`, {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${obterToken()}`
+                },
+                body: formData
+            });
 
-        projetos.forEach(p => {
-            const card = document.createElement('div');
-            card.className = 'project-card';
-            
-            let imagemUrl = 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=600&q=80';
-            if (p.poster_path) {
-                imagemUrl = `${p.poster_path}`;
+            if (!resposta.ok) {
+                const erroTexto = await resposta.text();
+                throw new Error(erroTexto || "Erro ao criar projeto.");
             }
 
-            const donoProjeto = (p.owner || p.user_id || '').trim().toLowerCase();
-            const éDono = (usuarioLogado !== '' && donoProjeto !== '' && donoProjeto === usuarioLogado);
-            const podeGerir = éAdmin || éDono;
+            formCriarProjeto.reset();
 
-            const statusProj = (p.status || '').toLowerCase();
-            const estaInspecionado = statusProj.includes('inspeção') || statusProj.includes('aguardando') || statusProj.includes('suspenso');
-
-            if (estaInspecionado) {
-                card.style.cssText = 'border: 2px solid #f59e0b; background: rgba(245, 158, 11, 0.03); position: relative;';
+            if (modalProjeto) {
+                modalProjeto.style.display = "none";
+                modalProjeto.setAttribute("aria-hidden", "true");
+                document.body.style.overflow = "";
             }
 
-            const badgeInspecao = estaInspecionado ? `<div style="background: #f59e0b; color: #000; font-size: 0.65rem; font-weight: bold; padding: 3px 6px; text-align: center; border-radius: 4px 4px 0 0; margin-bottom: 5px;">⏳ SOB INSPEÇÃO - AÇÃO NECESSÁRIA</div>` : '';
-
-            let rawBuildPath = p.build_path;
-            if (!rawBuildPath && p.executavel_navegador === 1) {
-                rawBuildPath = `sandbox_builds/${(p.title || '').toLowerCase().replace(/[\s]+/g, '_')}`;
-            }
-            const safeBuildPath = (rawBuildPath || '').replace(/\\/g, '/');
-
-            const safeTitle = encodeURIComponent(p.title || '');
-            const safeDesc = encodeURIComponent(p.description || '');
-            const safeTags = encodeURIComponent(p.tags ? (Array.isArray(p.tags) ? p.tags.join(', ') : p.tags) : '');
-            const safeMembers = encodeURIComponent(p.members || '');
-            const safeCampaign = p.campaign_id || '';
-            const safeStatus = encodeURIComponent(p.status || '');
-            const safeReply = encodeURIComponent(p.inspection_reply || '');
-            const safeGithub = encodeURIComponent(p.github_url || '');
-
-            let membrosHTML = '';
-            if (p.members) {
-                const listaMembros = p.members.split(',').map(m => m.trim()).filter(m => m);
-                if (listaMembros.length > 0) {
-                    const chipsMembros = listaMembros.map(m => `
-                        <a href="perfil.html?user=${encodeURIComponent(m)}" style="color: #d8b4fe; background: rgba(124, 58, 237, 0.25); border: 1px solid rgba(124, 58, 237, 0.4); padding: 2px 8px; border-radius: 12px; text-decoration: none; font-size: 0.75rem; font-weight: 600; display: inline-flex; align-items: center; gap: 3px;" title="Ver perfil de @${m}">
-                            👤 @${m}
-                        </a>
-                    `).join('');
-
-                    membrosHTML = `
-                        <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06); display: flex; flex-wrap: wrap; align-items: center; gap: 5px;">
-                            <span style="font-size: 0.75rem; color: #9ca3af; font-weight: bold;">Colaboradores:</span>
-                            ${chipsMembros}
-                        </div>
-                    `;
-                }
-            }
-
-            // --- GESTÃO DE VISIBILIDADE DE CÓDIGO ABERTO VS PRIVADO ---
-            let githubBadgeHTML = '';
-            if (p.codigo_aberto) {
-                githubBadgeHTML += `<span style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: bold; display: inline-block; margin-top: 6px;" title="Acesso total liberado">🔓 Código Aberto</span>`;
-                if (p.github_url) {
-                    githubBadgeHTML += ` <a href="${p.github_url}" target="_blank" style="color: #60a5fa; font-size: 0.75rem; text-decoration: underline; margin-left: 6px;">🔗 Ver Repositório</a>`;
-                }
-            } else {
-                githubBadgeHTML += `<span style="background: rgba(107, 114, 128, 0.2); color: #9ca3af; border: 1px solid rgba(107, 114, 128, 0.4); padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; display: inline-block; margin-top: 6px;">🔒 Projeto Privado (Apenas Dados Básicos)</span>`;
-                if (p.github_url && podeGerir) {
-                    githubBadgeHTML += ` <a href="${p.github_url}" target="_blank" style="color: #60a5fa; font-size: 0.75rem; text-decoration: underline; margin-left: 6px;">🔗 GitHub (Privado/Admin)</a>`;
-                }
-            }
-            // -----------------------------------------------------------
-
-            const corFavorito = p.favorito === 1 ? '#f59e0b' : '#9ca3af';
-
-            card.innerHTML = `
-                ${badgeInspecao}
-                <div class="project-img-container" onclick="testarJogoSePossivel('${p.id}', '${safeBuildPath}')">
-                    <img src="${imagemUrl}" alt="${p.title}">
-                </div>
-                <div class="project-info" onclick="testarJogoSePossivel('${p.id}', '${safeBuildPath}')">
-                    <div class="project-studio">${p.studio || 'Estúdio Independente'}</div>
-                    <div class="project-title">${p.title}</div>
-                    <div class="project-desc">${p.description}</div>
-                    <div>${githubBadgeHTML}</div>
-                    <div class="progress-bar-bg" style="margin-top: 8px;">
-                        <div class="progress-bar-fill" style="width: ${p.progress || 100}%;"></div>
-                    </div>
-                    <div class="project-tags">
-                        ${Array.isArray(p.tags) ? p.tags.map(t => `<span class="tag">${t}</span>`).join('') : ''}
-                    </div>
-                    ${membrosHTML}
-                    
-                    <div style="display: flex; align-items: center; gap: 15px; margin-top: 12px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06);">
-                        <button onclick="curtirProjeto(event, '${p.id}')" style="background: transparent; border: none; color: #d8b4fe; cursor: pointer; display: flex; align-items: center; gap: 5px; font-size: 0.85rem; font-weight: 500;" title="Curtir projeto">
-                            ❤️ <span>${p.likes || 0}</span>
-                        </button>
-                        <button onclick="favoritarProjeto(event, '${p.id}')" style="background: transparent; border: none; color: ${corFavorito}; cursor: pointer; display: flex; align-items: center; gap: 5px; font-size: 0.85rem;" title="Marcar como favorito">
-                            ⭐ <span>Favorito</span>
-                        </button>
-                    </div>
-                </div>
-                ${podeGerir ? `
-                    <div class="project-author-actions">
-                        <button class="btn-action-edit" onclick="abrirModalEditar(event, '${p.id}', '${safeTitle}', '${safeDesc}', '${p.progress || 100}', '${safeTags}', '${safeMembers}', '${safeCampaign}', '${safeStatus}', '${safeReply}', '${safeGithub}', '${p.codigo_aberto ? 1 : 0}')">✏️ Editar</button>
-                        <button class="btn-action-delete" onclick="excluirProjeto(event, '${p.id}')">🗑️ Excluir</button>
-                    </div>
-                ` : ''}
-            `;
-            grid.appendChild(card);
-        });
-    } catch (e) {
-        console.error('Erro ao buscar projetos:', e);
-        grid.innerHTML = `<p style="color: #ef4444; padding: 10px;">Erro ao carregar projetos.</p>`;
-    }
-}
-
-function filtrarProjetosTexto() {
-    const input = document.getElementById('adminSearchInput');
-    if (!input) return;
-
-    const termo = input.value.toLowerCase();
-    const cards = document.querySelectorAll('.project-card');
-    
-    cards.forEach(card => {
-        const titulo = card.querySelector('.project-title').textContent.toLowerCase();
-        const desc = card.querySelector('.project-desc').textContent.toLowerCase();
-        if (titulo.includes(termo) || desc.includes(termo)) {
-            card.style.display = 'flex';
-        } else {
-            card.style.display = 'none';
+            alert("Projeto criado com sucesso!");
+            carregarProjetos();
+        } catch (erro) {
+            console.error("Erro ao criar projeto:", erro);
+            alert("Não foi possível criar o projeto. Verifique os dados e tente novamente.");
         }
     });
 }
 
-function filtrarPorTag(tag) {
-    carregarProjetosHome(tag);
-}
+if (modalProjeto && botaoFecharModal) {
+    botaoFecharModal.addEventListener("click", function () {
+        modalProjeto.style.display = "none";
+        modalProjeto.setAttribute("aria-hidden", "true");
+        document.body.style.overflow = "";
+    });
 
-async function carregarLeaderboard() {
-    const container = document.getElementById('leaderboardList');
-    if (!container) return;
-
-    try {
-        const response = await fetch(`/perfil/leaderboard`);
-        if (!response.ok) throw new Error('Não foi possível carregar o leaderboard.');
-
-        const utilizadores = await response.json();
-        container.innerHTML = '';
-
-        if (!Array.isArray(utilizadores) || utilizadores.length === 0) {
-            container.innerHTML = '<span style="color: #9ca3af; font-size: 0.9rem;">Ainda não há pontuações registadas.</span>';
-            return;
+    modalProjeto.addEventListener("click", function (evento) {
+        if (evento.target === modalProjeto) {
+            modalProjeto.style.display = "none";
+            modalProjeto.setAttribute("aria-hidden", "true");
+            document.body.style.overflow = "";
         }
+    });
 
-        utilizadores.forEach((user, index) => {
-            const posicao = index + 1;
-            let corBadge = '#4b5563';
-            if (posicao === 1) corBadge = '#f59e0b';
-            else if (posicao === 2) corBadge = '#94a3b8';
-            else if (posicao === 3) corBadge = '#b45309';
-
-            const item = document.createElement('div');
-            item.style.cssText = "display: flex; justify-content: space-between; align-items: center; background: rgba(124, 58, 237, 0.1); padding: 10px 15px; border-radius: 8px; border: 1px solid rgba(124, 58, 237, 0.3);";
-            
-            item.innerHTML = `
-                <div style="display: flex; align-items: center; gap: 12px;">
-                    <span style="background: ${corBadge}; color: #fff; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: bold;">${posicao}</span>
-                    <span style="color: #fff; font-weight: 500; font-size: 0.9rem;">${user.arroba || '@' + user.nome}</span>
-                </div>
-                <span style="color: #d8b4fe; font-weight: bold; font-size: 0.9rem;">⚡ ${user.xp_atual || 0} XP</span>
-            `;
-            container.appendChild(item);
-        });
-    } catch (error) {
-        console.error('Erro ao carregar leaderboard:', error);
-        container.innerHTML = '<span style="color: #ef4444; font-size: 0.9rem;">Erro ao carregar o ranking.</span>';
-    }
-}
-
-async function curtirProjeto(event, id) {
-    event.stopPropagation();
-    const token = obterToken();
-    try {
-        const response = await fetch(`/projects/${id}/avaliar`, {
-            method: 'PATCH',
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-
-        if (!response.ok) throw new Error('Falha ao curtir o projeto.');
-
-        mostrarToast('Projeto curtido com sucesso! 👍', 'sucesso');
-        carregarProjetosHome();
-    } catch (error) {
-        mostrarToast('Erro ao curtir: ' + error.message, 'erro');
-    }
-}
-
-async function favoritarProjeto(event, id) {
-    event.stopPropagation();
-    const token = obterToken();
-    try {
-        const response = await fetch(`/projects/${id}/favorito`, {
-            method: 'PATCH',
-            headers: { 
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            }
-        });
-
-        if (!response.ok) throw new Error('Falha ao atualizar favorito.');
-
-        mostrarToast('Estado de favorito atualizado com sucesso! ⭐', 'sucesso');
-        carregarProjetosHome();
-    } catch (error) {
-        mostrarToast('Erro ao favoritar: ' + error.message, 'erro');
-    }
-}
-
-function testarJogoSePossivel(projectId, buildPath) {
-    if (buildPath && buildPath !== 'null' && buildPath !== 'undefined' && buildPath !== '') {
-        executarJogo(projectId, buildPath);
-    } else {
-        mostrarToast('Este projeto não possui uma build executável no navegador.', 'erro');
-    }
-}
-
-async function abrirModalEditar(event, id, titleEncoded, descEncoded, progress, tagsEncoded, membersEncoded, campaignId, statusEncoded = '', replyEncoded = '', githubEncoded = '', codigoAbertoVal = 0) {
-    event.stopPropagation();
-    
-    document.getElementById('editProjId').value = id;
-    document.getElementById('editProjTitle').value = decodeURIComponent(titleEncoded);
-    document.getElementById('editProjDesc').value = decodeURIComponent(descEncoded);
-    document.getElementById('editProjProgress').value = progress;
-    document.getElementById('editProjTags').value = decodeURIComponent(tagsEncoded);
-
-    const githubField = document.getElementById('editProjGithubUrl');
-    if (githubField) githubField.value = decodeURIComponent(githubEncoded);
-
-    const codigoAbertoCheck = document.getElementById('editProjCodigoAberto');
-    if (codigoAbertoCheck) codigoAbertoCheck.checked = (String(codigoAbertoVal) === '1' || codigoAbertoVal === true);
-
-    const status = decodeURIComponent(statusEncoded).toLowerCase();
-    const replyContainer = document.getElementById('editInspectionReplyContainer');
-    const replyField = document.getElementById('editInspectionReply');
-    const estaInspecionado = status.includes('inspeção') || status.includes('aguardando') || status.includes('suspenso');
-
-    if (estaInspecionado && replyContainer && replyField) {
-        replyContainer.style.display = 'block';
-        replyField.value = decodeURIComponent(replyEncoded);
-    } else if (replyContainer) {
-        replyContainer.style.display = 'none';
-        if (replyField) replyField.value = '';
-    }
-
-    await carregarCampanhasNoSelectEdicao(campaignId);
-
-    equipeSelecionadaEdicao = [];
-    const membersStr = decodeURIComponent(membersEncoded);
-    if (membersStr) {
-        equipeSelecionadaEdicao = membersStr.split(',').map(m => m.trim()).filter(m => m);
-    }
-    atualizarListaEquipeEdicaoUI();
-
-    const modal = document.getElementById('modalEditarProjeto');
-    if (modal) modal.style.display = 'flex';
-}
-
-function fecharModalEditar() {
-    const modal = document.getElementById('modalEditarProjeto');
-    if (modal) modal.style.display = 'none';
-    equipeSelecionadaEdicao = [];
-}
-
-async function carregarCampanhasNoSelectEdicao(selectedCampaignId) {
-    const select = document.getElementById('editProjCampaignSelect');
-    if (!select) return;
-
-    try {
-        const response = await fetch(`/campanhas`);
-        if (!response.ok) return;
-        const campanhas = await response.json();
-
-        if (Array.isArray(campanhas)) {
-            select.innerHTML = '<option value="">Nenhuma (Projeto Independente Geral)</option>';
-            campanhas.forEach(c => {
-                const option = document.createElement('option');
-                option.value = c.id;
-                option.textContent = c.titulo || c.title;
-                if (String(c.id) === String(selectedCampaignId)) {
-                    option.selected = true;
-                }
-                select.appendChild(option);
-            });
+    document.addEventListener("keydown", function (evento) {
+        if (evento.key === "Escape" && modalProjeto.style.display === "flex") {
+            modalProjeto.style.display = "none";
+            modalProjeto.setAttribute("aria-hidden", "true");
+            document.body.style.overflow = "";
         }
-    } catch (e) {
-        console.error('Erro ao carregar campanhas na edição:', e);
-    }
-}
-
-async function pesquisarMembroEquipeEdicao() {
-    const termo = document.getElementById('editMemberSearchInput').value.trim();
-    const resultDiv = document.getElementById('editMemberSearchResult');
-    const token = obterToken();
-
-    if (!termo) {
-        resultDiv.innerHTML = '<span style="color: #fca5a5;">Digite um username para pesquisar.</span>';
-        return;
-    }
-
-    resultDiv.innerHTML = 'A pesquisar...';
-
-    try {
-        const response = await fetch(`/users/search?username=${encodeURIComponent(termo)}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-
-        if (!response.ok) throw new Error('Utilizador não encontrado.');
-
-        const user = await response.json();
-        
-        if (equipeSelecionadaEdicao.includes(user.username)) {
-            resultDiv.innerHTML = '<span style="color: #fca5a5;">Este utilizador já faz parte da equipe.</span>';
-            return;
-        }
-
-        resultDiv.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(124, 58, 237, 0.15); padding: 8px; border-radius: 6px; border: 1px solid #7c3aed;">
-                <span>👤 <strong>${user.username}</strong></span>
-                <button type="button" onclick="adicionarMembroEquipeEdicao('${user.username}')" style="background: #10b981; color: #fff; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; font-weight: bold;">+ Adicionar</button>
-            </div>
-        `;
-    } catch (error) {
-        resultDiv.innerHTML = `<span style="color: #fca5a5;">⚠️ ${error.message}</span>`;
-    }
-}
-
-function adicionarMembroEquipeEdicao(username) {
-    if (!equipeSelecionadaEdicao.includes(username)) {
-        equipeSelecionadaEdicao.push(username);
-        atualizarListaEquipeEdicaoUI();
-    }
-    document.getElementById('editMemberSearchInput').value = '';
-    document.getElementById('editMemberSearchResult').innerHTML = '';
-}
-
-function removerMembroEquipeEdicao(username) {
-    equipeSelecionadaEdicao = equipeSelecionadaEdicao.filter(m => m !== username);
-    atualizarListaEquipeEdicaoUI();
-}
-
-function atualizarListaEquipeEdicaoUI() {
-    const listDiv = document.getElementById('editSelectedTeamList');
-    const hiddenField = document.getElementById('editProjMembersField');
-    
-    if (!listDiv || !hiddenField) return;
-
-    listDiv.innerHTML = '';
-    hiddenField.value = equipeSelecionadaEdicao.join(',');
-
-    if (equipeSelecionadaEdicao.length === 0) {
-        listDiv.innerHTML = '<span style="color: #9ca3af; font-size: 0.8rem;">Nenhum integrante adicionado.</span>';
-        return;
-    }
-
-    equipeSelecionadaEdicao.forEach(username => {
-        const chip = document.createElement('div');
-        chip.style.cssText = "background: #7c3aed; color: #fff; padding: 4px 10px; border-radius: 15px; font-size: 0.8rem; display: flex; align-items: center; gap: 6px;";
-        chip.innerHTML = `
-            <span>@${username}</span>
-            <button type="button" onclick="removerMembroEquipeEdicao('${username}')" style="background: none; border: none; color: #fff; cursor: pointer; font-weight: bold; font-size: 0.9rem; padding: 0;">&times;</button>
-        `;
-        listDiv.appendChild(chip);
     });
 }
 
-async function salvarEdicaoProjeto(event) {
-    event.preventDefault();
-    const token = obterToken();
-    const id = document.getElementById('editProjId').value;
-    const btnSubmit = event.target.querySelector('button[type="submit"]');
+/* MENU DO PERFIL */
+const botaoPerfil = document.getElementById("botao-perfil");
+const menuPerfil = document.getElementById("menu-perfil");
+const perfilContainer = document.querySelector(".perfil-container");
 
-    const campaignIdVal = document.getElementById('editProjCampaignSelect').value;
-    const replyField = document.getElementById('editInspectionReply');
-    const githubField = document.getElementById('editProjGithubUrl');
-    const codigoAbertoCheck = document.getElementById('editProjCodigoAberto');
+if (botaoPerfil && menuPerfil && perfilContainer) {
+    let temporizadorFechar;
 
-    const dadosAtualizados = {
-        title: document.getElementById('editProjTitle').value,
-        description: document.getElementById('editProjDesc').value,
-        progress: parseInt(document.getElementById('editProjProgress').value),
-        tags: document.getElementById('editProjTags').value,
-        campaign_id: campaignIdVal ? parseInt(campaignIdVal) : null,
-        members: document.getElementById('editProjMembersField').value,
-        github_url: githubField ? githubField.value.trim() : null,
-        codigo_aberto: codigoAbertoCheck ? codigoAbertoCheck.checked : false
-    };
-
-    if (replyField && replyField.offsetParent !== null) {
-        dadosAtualizados.inspection_reply = replyField.value.trim();
+    function abrirMenuPerfil() {
+        clearTimeout(temporizadorFechar);
+        menuPerfil.hidden = false;
+        botaoPerfil.setAttribute("aria-expanded", "true");
     }
 
-    definirBotaoCarregamento(btnSubmit, true, "Guardar Alterações");
+    function agendarFechamento() {
+        clearTimeout(temporizadorFechar);
+        temporizadorFechar = setTimeout(function () {
+            fecharMenuPerfil();
+        }, 300);
+    }
 
-    try {
-        const response = await fetch(`/projects/${id}`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify(dadosAtualizados)
-        });
+    function fecharMenuPerfil() {
+        menuPerfil.hidden = true;
+        botaoPerfil.setAttribute("aria-expanded", "false");
+    }
 
-        if (!response.ok) {
-            const errData = await response.json().catch(() => ({}));
-            throw new Error(errData.detail || 'Falha ao atualizar o projeto.');
+    perfilContainer.addEventListener("mouseenter", abrirMenuPerfil);
+    perfilContainer.addEventListener("mouseleave", agendarFechamento);
+
+    menuPerfil.addEventListener("mouseenter", abrirMenuPerfil);
+    menuPerfil.addEventListener("mouseleave", agendarFechamento);
+
+    botaoPerfil.addEventListener("click", function (evento) {
+        evento.stopPropagation();
+
+        if (menuPerfil.hidden) {
+            abrirMenuPerfil();
+        } else {
+            fecharMenuPerfil();
         }
+    });
 
-        mostrarToast('Projeto e definições de código aberto guardados com sucesso!', 'sucesso');
-        fecharModalEditar();
-        carregarProjetosHome();
-        carregarProjetosSobInspecaoUsuario();
-    } catch (error) {
-        mostrarToast('Erro ao editar: ' + error.message, 'erro');
-    } finally {
-        definirBotaoCarregamento(btnSubmit, false, "Guardar Alterações");
-    }
-}
-
-async function excluirProjeto(event, id) {
-    event.stopPropagation();
-    if (!confirm('Tem certeza de que deseja excluir este projeto permanentemente?')) return;
-
-    const token = obterToken();
-
-    try {
-        const response = await fetch(`/projects/${id}`, {
-            method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-
-        if (!response.ok) {
-            const errData = await response.json().catch(() => ({}));
-            throw new Error(errData.detail || 'Falha ao excluir o projeto.');
+    document.addEventListener("click", function (evento) {
+        if (!perfilContainer.contains(evento.target)) {
+            fecharMenuPerfil();
         }
+    });
+}
 
-        mostrarToast('Projeto excluído com sucesso!', 'sucesso');
-        carregarProjetosHome();
-        carregarProjetosSobInspecaoUsuario();
-    } catch (error) {
-        mostrarToast('Erro ao excluir: ' + error.message, 'erro');
+function atualizarPerfilNoMenu() {
+    const nomeSalvo = sessionStorage.getItem("ludaryumNome") || localStorage.getItem("ludaryumNome");
+    const fotoSalva = sessionStorage.getItem("ludaryumFoto") || localStorage.getItem("ludaryumFoto");
+    const nomeMenu = document.getElementById("nome-menu-perfil");
+
+    if (nomeSalvo && nomeMenu) {
+        nomeMenu.textContent = nomeSalvo;
+    }
+
+    const avatar = document.getElementById("botao-perfil");
+    const iniciais = document.getElementById("iniciais-perfil-menu");
+
+    if (!avatar || !iniciais) return;
+
+    if (nomeSalvo) {
+        const partes = nomeSalvo.trim().split(/\s+/).filter(Boolean);
+
+        iniciais.textContent = partes
+            .slice(0, 2)
+            .map(parte => parte[0].toUpperCase())
+            .join("") || "LM";
+    }
+
+    if (fotoSalva) {
+        avatar.style.backgroundImage = `url("${fotoSalva}")`;
+        avatar.style.backgroundSize = "cover";
+        avatar.style.backgroundPosition = "center";
+        avatar.style.backgroundRepeat = "no-repeat";
+        iniciais.style.display = "none";
+    } else {
+        avatar.style.backgroundImage = "";
+        iniciais.style.display = "";
+    }
+
+    const avatarMenu = document.getElementById("avatar-menu-perfil");
+
+    if (avatarMenu) {
+        if (fotoSalva) {
+            avatarMenu.style.backgroundImage = `url("${fotoSalva}")`;
+            avatarMenu.style.backgroundSize = "cover";
+            avatarMenu.style.backgroundPosition = "center";
+            avatarMenu.style.backgroundRepeat = "no-repeat";
+            avatarMenu.textContent = "";
+        } else {
+            avatarMenu.style.backgroundImage = "";
+            avatarMenu.textContent = iniciais.textContent;
+        }
     }
 }
 
-function executarJogo(projectId, buildPath) {
-    projetoAtualId = projectId;
+atualizarPerfilNoMenu();
 
-    const container = document.getElementById('sandboxContainer');
-    const iframe = document.getElementById('gameIframe');
-
-    const partes = buildPath.replace(/\\/g, '/').split('/');
-    const pastaJogo = partes[partes.length - 1];
-    
-    iframe.src = `/sandbox/${pastaJogo}/index.html`;
-    container.style.display = 'block';
-    container.scrollIntoView({ behavior: 'smooth' });
-}
-
-function fecharSandbox() {
-    const container = document.getElementById('sandboxContainer');
-    if (container) container.style.display = 'none';
-    const iframe = document.getElementById('gameIframe');
-    if (iframe) iframe.src = '';
-    if (document.fullscreenElement) document.exitFullscreen();
-
-    if (projetoAtualId) {
-        document.getElementById('feedback-project-id').value = projetoAtualId;
-        const modalFeedback = document.getElementById('modal-feedback-jogo');
-        if (modalFeedback) modalFeedback.style.display = 'flex';
-    }
-}
-
-async function submeterFeedbackJogo(projectId, nota, comentario) {
+// =========================================================================
+// VERIFICAÇÃO DE ADMIN PARA EXIBIR OPÇÃO NO MENU DE PERFIL DA HOME (CORRIGIDA)
+// =========================================================================
+async function verificarVisibilidadeAdminHome() {
     const token = obterToken();
+    const linkAdmin = document.getElementById("link-painel-admin");
 
-    const dadosFeedback = {
-        pontuacao: parseInt(nota),
-        comentario: comentario
-    };
+    if (!token || !linkAdmin) return;
 
     try {
-        const response = await fetch(`/projects/${projectId}/testar`, {
-            method: 'POST',
+        const resposta = await fetch(`${API_BASE_URL}/auth/verificar-admin`, {
+            method: "GET",
             headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(dadosFeedback)
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
+            }
         });
 
-        if (!response.ok) throw new Error('Falha ao submeter a avaliação do jogo.');
-
-        mostrarToast('Feedback submetido com sucesso! Ganhou +75 XP 🎉', 'sucesso');
-        carregarLeaderboard();
-        fecharModalFeedbackSemXP();
-    } catch (error) {
-        console.error("Erro:", error);
-        mostrarToast('Erro ao enviar avaliação. Tente novamente.', 'erro');
-    }
-}
-
-function fecharModalFeedbackSemXP() {
-    const modal = document.getElementById('modal-feedback-jogo');
-    if (modal) modal.style.display = 'none';
-    const form = document.getElementById('form-feedback-jogo');
-    if (form) form.reset();
-    projetoAtualId = null;
-}
-
-function minimizarSandbox() {
-    const wrapper = document.getElementById('sandboxWrapper');
-    if (!wrapper) return;
-    wrapper.style.height = wrapper.style.height === '150px' ? '600px' : '150px';
-}
-
-function expandirSandbox() {
-    const wrapper = document.getElementById('sandboxWrapper');
-    if (!wrapper) return;
-    if (!document.fullscreenElement) {
-        if (wrapper.requestFullscreen) wrapper.requestFullscreen();
-    } else {
-        document.exitFullscreen();
-    }
-}
-
-function ajustarVolume(valor) {
-    const icon = document.getElementById('volIcon');
-    if (!icon) return;
-    if (valor == 0) icon.textContent = '🔇';
-    else if (valor < 0.5) icon.textContent = '🔉';
-    else icon.textContent = '🔊';
-}
-
-function mutarAudio() {
-    const slider = document.getElementById('volSlider');
-    if (!slider) return;
-    if (slider.value > 0) {
-        slider.dataset.lastVal = slider.value;
-        slider.value = 0;
-        ajustarVolume(0);
-    } else {
-        slider.value = slider.dataset.lastVal || 1;
-        ajustarVolume(slider.value);
-    }
-}
-
-async function carregarMensagensPrivadas() {
-    const token = obterToken();
-    const container = document.getElementById('myMessagesList');
-    if (!container) return;
-
-    try {
-        const response = await fetch(`/messages/my-messages`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-
-        if (!response.ok) throw new Error('Falha ao carregar mensagens');
-
-        const messages = await response.json();
-        container.innerHTML = '';
-
-        if (!Array.isArray(messages) || messages.length === 0) {
-            container.innerHTML = '<span style="color: #9ca3af;">Não tem nenhuma mensagem nova da administração.</span>';
+        // Se for 403 (Forbidden), é um usuário comum: oculta o painel silenciosamente
+        if (resposta.status === 403 || !resposta.ok) {
+            linkAdmin.style.display = "none";
             return;
         }
 
-        messages.forEach(msg => {
-            const card = document.createElement('div');
-            card.style.cssText = "background: rgba(124, 58, 237, 0.15); border-left: 3px solid #7c3aed; padding: 10px; margin-top: 8px; border-radius: 4px; position: relative;";
-            
-            let dataFormatada = msg.created_at;
-            try {
-                const dataObj = new Date(msg.created_at.endsWith('Z') ? msg.created_at : msg.created_at + 'Z');
-                dataFormatada = dataObj.toLocaleString();
-            } catch (e) {
-                dataFormatada = msg.created_at;
-            }
+        linkAdmin.style.display = "flex"; // Revela apenas se for admin autorizado
+    } catch (e) {
+        if (linkAdmin) linkAdmin.style.display = "none";
+    }
+}
 
-            card.innerHTML = `
-                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; color: #d8b4fe; margin-bottom: 4px;">
-                    <div><strong>De:</strong> ${msg.sender_username} — <span style="color: #9ca3af;">${dataFormatada}</span></div>
-                    <button onclick="apagarMensagem(${msg.id})" style="background: none; border: none; color: #fca5a5; font-size: 1.1rem; cursor: pointer; font-weight: bold; padding: 0 4px;" title="Apagar mensagem">&times;</button>
-                </div>
-                <div style="color: #fff; font-size: 0.9rem;">${msg.content}</div>
+verificarVisibilidadeAdminHome();
+
+/* ===== ALTERNAR TEMA DO LUDARYUM ===== */
+
+const botaoTema = document.getElementById("alternar-tema");
+const iconeTema = botaoTema?.querySelector("svg");
+
+function aplicarTema(tema) {
+    document.documentElement.setAttribute("data-tema", tema);
+    localStorage.setItem("tema-ludaryum", tema);
+
+    if (iconeTema) {
+        iconeTema.innerHTML = tema === "claro"
+            ? `
+                <circle cx="12" cy="12" r="4"></circle>
+                <path d="M12 2v2"></path>
+                <path d="M12 20v2"></path>
+                <path d="m4.93 4.93 1.42 1.42"></path>
+                <path d="m17.65 17.65 1.42 1.42"></path>
+                <path d="M2 12h2"></path>
+                <path d="M20 12h2"></path>
+                <path d="m4.93 19.07 1.42-1.42"></path>
+                <path d="m17.65 6.35 1.42-1.42"></path>
+            `
+            : `
+                <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
             `;
-            container.appendChild(card);
-        });
-    } catch (error) {
-        console.error('Erro ao buscar mensagens privadas:', error);
-        container.innerHTML = '<span style="color: #ef4444; font-size: 0.9rem;">Erro ao carregar mensagens.</span>';
     }
 }
 
-async function apagarMensagem(msgId) {
-    const token = obterToken();
-    try {
-        const response = await fetch(`/messages/${msgId}`, {
-            method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (!response.ok) throw new Error('Falha ao apagar mensagem.');
-        carregarMensagensPrivadas();
-    } catch (error) {
-        mostrarToast('Erro: ' + error.message, 'erro');
-    }
+const temaSalvo = localStorage.getItem("tema-ludaryum") || "escuro";
+aplicarTema(temaSalvo);
+
+if (botaoTema) {
+    botaoTema.addEventListener("click", function () {
+        const temaAtual = document.documentElement.getAttribute("data-tema");
+        aplicarTema(temaAtual === "claro" ? "escuro" : "claro");
+    });
 }
 
-async function pesquisarUtilizadorAdmin() {
-    const termo = document.getElementById('adminSearchInput').value.trim();
-    const resultDiv = document.getElementById('adminSearchResult');
-    const token = obterToken();
+/* ===== FUNCIONAMENTO DAS NOTIFICAÇÕES ===== */
 
-    if (!termo) {
-        mostrarToast('Por favor, digite um username ou email para pesquisar.', 'erro');
+const botaoNotificacoes = document.getElementById("abrir-notificacoes");
+const painelNotificacoes = document.getElementById("painel-notificacoes");
+const fecharNotificacoes = document.getElementById("fechar-notificacoes");
+
+if (botaoNotificacoes && painelNotificacoes && fecharNotificacoes) {
+    botaoNotificacoes.addEventListener("click", function () {
+        painelNotificacoes.classList.toggle("aberto");
+
+        if (painelNotificacoes.classList.contains("aberto")) {
+            mostrarNotificacoes();
+        }
+    });
+
+    fecharNotificacoes.addEventListener("click", function () {
+        painelNotificacoes.classList.remove("aberto");
+    });
+}
+
+document.addEventListener("click", function (evento) {
+    if (
+        painelNotificacoes &&
+        botaoNotificacoes &&
+        !painelNotificacoes.contains(evento.target) &&
+        !botaoNotificacoes.contains(evento.target)
+    ) {
+        painelNotificacoes.classList.remove("aberto");
+    }
+});
+
+/* ===== NOTIFICAÇÕES (INTEGRADO À SESSÃO) ===== */
+
+function buscarNotificacoes() {
+    const salvas = sessionStorage.getItem("ludaryum-notificacoes");
+    return salvas ? JSON.parse(salvas) : [];
+}
+
+function mostrarNotificacoes() {
+    const notificacoes = buscarNotificacoes();
+    const lista = document.getElementById("lista-notificacoes");
+
+    if (!lista) return;
+
+    lista.replaceChildren();
+
+    if (notificacoes.length === 0) {
+        const mensagem = document.createElement("p");
+        mensagem.className = "notificacoes-vazio";
+        mensagem.textContent = "Você ainda não tem notificações.";
+        lista.appendChild(mensagem);
         return;
     }
 
-    resultDiv.innerHTML = 'A pesquisar...';
-    const queryParam = termo.includes('@') ? `email=${encodeURIComponent(termo)}` : `username=${encodeURIComponent(termo)}`;
+    notificacoes.forEach(function (notificacao) {
+        const item = document.createElement("div");
+        item.className = "item-notificacao";
 
-    try {
-        const response = await fetch(`/users/search?${queryParam}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
+        const texto = document.createElement("p");
+        texto.textContent = notificacao.mensagem;
 
-        if (!response.ok) throw new Error('Utilizador não encontrado.');
+        const data = document.createElement("small");
+        data.textContent = notificacao.data;
 
-        const userData = await response.json();
-        resultDiv.innerHTML = `
-            <div style="background: rgba(124, 58, 237, 0.1); border: 1px solid #7c3aed; padding: 12px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                    <p><strong>ID:</strong> ${userData.id}</p>
-                    <p><strong>Username:</strong> ${userData.username}</p>
-                    <p><strong>Email:</strong> ${userData.email}</p>
-                </div>
-                <button onclick="abrirModalAdminMensagem(event, '${userData.username}')" style="background: #7c3aed; color: #fff; border: none; padding: 8px 14px; border-radius: 4px; cursor: pointer; font-size: 0.85rem;">💬 Enviar Mensagem Privada</button>
-            </div>
-        `;
-    } catch (error) {
-        resultDiv.innerHTML = `<span style="color: #fca5a5;">⚠️ ${error.message}</span>`;
-    }
+        item.append(texto, data);
+        lista.appendChild(item);
+    });
 }
 
-function abrirModalAdminMensagem(event, autorUsername) {
-    if (event) event.stopPropagation();
-    currentAdminRecipient = autorUsername;
-    document.getElementById('modalRecipientUser').textContent = autorUsername;
-    document.getElementById('adminMessageModal').style.display = 'flex';
-}
+/* ===== SAIR DA LUDARYUM ===== */
 
-function closeAdminMessageModal() {
-    document.getElementById('adminMessageModal').style.display = 'none';
-    document.getElementById('adminMessageText').value = '';
-    currentAdminRecipient = null;
-}
+const botaoSair = document.getElementById("desconectar");
 
-async function submitAdminMessage() {
-    const token = obterToken();
-    const content = document.getElementById('adminMessageText').value.trim();
-    const recipient = currentAdminRecipient;
-
-    if (!content) {
-        mostrarToast('Por favor, escreva o conteúdo da mensagem.', 'erro');
-        return;
-    }
-
-    try {
-        const response = await fetch(`/messages/send-admin-message?recipient_username=${encodeURIComponent(recipient)}&content=${encodeURIComponent(content)}`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-
-        if (!response.ok) throw new Error('Falha ao enviar mensagem privada.');
-
-        mostrarToast('Mensagem privada enviada com sucesso ao utilizador!', 'sucesso');
-        closeAdminMessageModal();
-    } catch (error) {
-        mostrarToast('Erro: ' + error.message, 'erro');
-    }
-}
-
-async function atualizarPerfilMenu(token) {
-    try {
-        const response = await fetch(`/me`, {
-            headers: { 'Authorization': 'Bearer ' + token }
-        });
-        if (!response.ok) return;
-
-        const user = await response.json();
+if (botaoSair) {
+    botaoSair.addEventListener("click", function () {
+        // Limpa todos os dados da sessão e localStorage associados ao utilizador
+        sessionStorage.clear();
+        localStorage.removeItem("ludaryumToken");
+        localStorage.removeItem("ludaryumNome");
+        localStorage.removeItem("ludaryumFoto");
+        localStorage.removeItem("ludaryum-notificacoes");
+        localStorage.removeItem("tema-ludaryum");
         
-        const navUserSpan = document.getElementById('navUsername');
-        if (navUserSpan) navUserSpan.textContent = user.username;
+        // Redireciona diretamente para a página de login através do Gateway central
+        window.location.href = "/home-ui/login.html";
+    });
+}
 
-        const avatarDiv = document.getElementById('navUserAvatar');
-        if (avatarDiv) {
-            if (user.avatar_url) {
-                avatarDiv.innerHTML = `<img src="${user.avatar_url}" alt="Avatar" style="width: 100%; height: 100%; object-fit: cover;">`;
-            } else {
-                avatarDiv.textContent = user.username.charAt(0).toUpperCase();
+async function verificarPermissaoAdminNaHome() {
+    const token = obterToken();
+    if (!token) return;
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/auth/verificar-admin`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (response.status === 403 || !response.ok) {
+            return; // Silencia o 403 para usuários comuns
+        }
+
+        if (response.ok) {
+            const navLinks = document.querySelector('.nav-links') || document.querySelector('nav');
+            if (navLinks && !document.getElementById('btn-admin-nav')) {
+                const adminLink = document.createElement('a');
+                adminLink.id = 'btn-admin-nav';
+                adminLink.href = `/admin-ui/admin.html?token=${encodeURIComponent(token)}`;
+                adminLink.innerHTML = '🛡️ Painel Admin';
+                adminLink.style.cssText = 'color: #f59e0b; font-weight: bold; margin-left: 10px; padding: 6px 12px; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 6px; text-decoration: none;';
+                navLinks.appendChild(adminLink);
             }
         }
-        
-        localStorage.setItem('ludarium_user', user.username);
     } catch (e) {
-        console.error('Erro ao atualizar perfil no menu:', e);
+        // Erro ignorado para não afetar o fluxo do usuário comum
     }
 }
 
-async function carregarNotificacoes() {
-    const token = obterToken();
-    const list = document.getElementById('notificationsList');
-    if (!token || !list) return;
-
-    try {
-        const response = await fetch(`/notifications`, {
-            headers: { 'Authorization': 'Bearer ' + token }
-        });
-        if (!response.ok) return;
-        const notificacoes = await response.json();
-        
-        const badge = document.getElementById('notificationBadge');
-        const naoLidas = notificacoes.filter(n => n.is_read === 0).length;
-        if (naoLidas > 0) {
-            badge.textContent = naoLidas;
-            badge.style.display = 'inline-block';
-        } else {
-            badge.style.display = 'none';
-        }
-        
-        if (!Array.isArray(notificacoes) || notificacoes.length === 0) {
-            list.innerHTML = '<span style="color: #9ca3af;">Sem notificações recentes.</span>';
-            return;
-        }
-        
-        list.innerHTML = '';
-        notificacoes.forEach(n => {
-            const item = document.createElement('div');
-            item.style.cssText = `padding: 8px; margin-bottom: 6px; background: ${n.is_read === 0 ? 'rgba(124, 58, 237, 0.25)' : 'rgba(255, 255, 255, 0.03)'}; border-radius: 6px; cursor: pointer; border-left: 3px solid ${n.is_read === 0 ? '#7c3aed' : '#4b5563'};`;
-            
-            let dataFormatada = n.created_at;
-            try {
-                dataFormatada = new Date(n.created_at.endsWith('Z') ? n.created_at : n.created_at + 'Z').toLocaleString();
-            } catch (e) {}
-
-            item.innerHTML = `
-                <div style="color: #fff; font-weight: ${n.is_read === 0 ? 'bold' : 'normal'};">${n.content}</div>
-                <div style="font-size: 0.7rem; color: #9ca3af; margin-top: 3px;">${dataFormatada}</div>
-            `;
-            item.onclick = () => marcarNotificacaoLida(n.id);
-            list.appendChild(item);
-        });
-    } catch (e) {
-        console.error('Erro ao carregar notificações:', e);
-    }
-}
-
-function toggleNotificationsMenu() {
-    const dropdown = document.getElementById('notificationsDropdown');
-    if (dropdown) {
-        const isOpen = dropdown.style.display === 'block';
-        dropdown.style.display = isOpen ? 'none' : 'block';
-        if (!isOpen) {
-            carregarNotificacoes();
-        }
-    }
-}
-
-async function marcarNotificacaoLida(id) {
-    const token = obterToken();
-    try {
-        await fetch(`/notifications/${id}/read`, {
-            method: 'PATCH',
-            headers: { 'Authorization': 'Bearer ' + token }
-        });
-        carregarNotificacoes();
-    } catch (e) {
-        console.error('Erro ao marcar notificação como lida:', e);
-    }
-}
-
-async function carregarProjetosSobInspecaoUsuario() {
-    const box = document.getElementById('userInspectionAlertBox');
-    const list = document.getElementById('userInspectionProjectsList');
-    if (!box || !list) return;
-
-    const token = obterToken();
-    const usuarioLogado = obterUtilizadorAtualDoToken();
-    if (!token || !usuarioLogado) return;
-
-    try {
-        const response = await fetch(`/projects`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (!response.ok) return;
-
-        const projetos = await response.json();
-        if (!Array.isArray(projetos)) return;
-
-        const meusProjetosSobInspecao = projetos.filter(p => {
-            const dono = (p.owner || p.user_id || '').trim().toLowerCase();
-            const statusProj = (p.status || '').toLowerCase();
-            const éMeu = (dono === usuarioLogado);
-            const estaInspecionado = statusProj.includes('inspeção') || statusProj.includes('aguardando') || statusProj.includes('suspenso');
-            return éMeu && estaInspecionado;
-        });
-
-        if (meusProjetosSobInspecao.length > 0) {
-            let html = '';
-            meusProjetosSobInspecao.forEach(p => {
-                const safeTitle = encodeURIComponent(p.title || '');
-                const safeDesc = encodeURIComponent(p.description || '');
-                const safeTags = encodeURIComponent(p.tags ? (Array.isArray(p.tags) ? p.tags.join(', ') : p.tags) : '');
-                const safeMembers = encodeURIComponent(p.members || '');
-                const safeCampaign = p.campaign_id || '';
-                const safeStatus = encodeURIComponent(p.status || '');
-                const safeReply = encodeURIComponent(p.inspection_reply || '');
-                const safeGithub = encodeURIComponent(p.github_url || '');
-
-                html += `
-                    <div style="background: #1e1b2e; border: 1px solid #f59e0b; padding: 20px; border-radius: 10px; margin-bottom: 12px;">
-                        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
-                            <div>
-                                <h4 style="color: #fff; margin: 0 0 5px 0; font-size: 1.05rem;">🎮 ${p.title}</h4>
-                                <p style="color: #f59e0b; font-size: 0.85rem; margin: 0 0 5px 0;"><strong>Estado:</strong> ${p.status || 'Sob Inspeção'}</p>
-                                ${p.inspection_reason ? `<p style="color: #d8b4fe; font-size: 0.85rem; margin: 4px 0;"><strong>Motivo do Inspetor:</strong> ${p.inspection_reason}</p>` : ''}
-                                ${p.inspection_message ? `<p style="color: #d8b4fe; font-size: 0.85rem; margin: 4px 0;"><strong>Instruções:</strong> ${p.inspection_message}</p>` : ''}
-                            </div>
-                        </div>
-                        
-                        <div style="background: rgba(245, 158, 11, 0.05); border: 1px solid rgba(245, 158, 11, 0.2); padding: 15px; border-radius: 8px; margin-top: 10px;">
-                            <label style="display: block; color: #f59e0b; font-size: 0.85rem; font-weight: bold; margin-bottom: 6px;">✍️ Escrever Resposta / Comentário de Correção para o Inspetor:</label>
-                            <textarea id="reply_input_${p.id}" rows="3" placeholder="Descreva as alterações e correções efetuadas neste projeto..." style="width: 100%; padding: 10px; background: #0f0e17; border: 1px solid #3f3d56; color: #fff; border-radius: 6px; resize: none; font-size: 0.85rem; margin-bottom: 10px;">${p.inspection_reply || ''}</textarea>
-                            <div style="display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap;">
-                                <button onclick="abrirModalEditar(event, '${p.id}', '${safeTitle}', '${safeDesc}', '${p.progress || 100}', '${safeTags}', '${safeMembers}', '${safeCampaign}', '${safeStatus}', '${safeReply}', '${safeGithub}', '${p.codigo_aberto ? 1 : 0}')" style="background: transparent; border: 1px solid #7c3aed; color: #d8b4fe; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.8rem;">
-                                    ✏️ Editar Detalhes do Projeto
-                                </button>
-                                <button onclick="enviarRespostaInspecaoDireta('${p.id}')" style="background: #f59e0b; color: #000; border: none; padding: 7px 16px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 0.85rem;">
-                                    🚀 Enviar Resposta ao Inspetor
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            });
-            list.innerHTML = html;
-            box.style.display = 'block';
-        } else {
-            box.style.display = 'none';
-        }
-    } catch (e) {
-        console.error("Erro ao verificar projetos sob inspeção:", e);
-    }
-}
-
-async function enviarRespostaInspecaoDireta(projectId) {
-    const token = obterToken();
-    const replyField = document.getElementById(`reply_input_${projectId}`);
-    if (!replyField) return;
-
-    const replyText = replyField.value.trim();
-    if (!replyText) {
-        mostrarToast('Por favor, escreva a sua resposta de correção antes de enviar.', 'erro');
-        return;
-    }
-
-    try {
-        const response = await fetch(`/projects/${projectId}/reply-inspection`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({
-                reply_message: replyText
-            })
-        });
-
-        if (!response.ok) {
-            const errData = await response.json().catch(() => ({}));
-            throw new Error(errData.detail || 'Falha ao enviar resposta de inspeção.');
-        }
-
-        mostrarToast('Resposta de correção enviada ao inspetor com sucesso! 👍', 'sucesso');
-        carregarProjetosSobInspecaoUsuario();
-        carregarProjetosHome();
-    } catch (error) {
-        mostrarToast('Erro ao enviar resposta: ' + error.message, 'erro');
-    }
-}
+// Executar ao carregar a página
+document.addEventListener('DOMContentLoaded', verificarPermissaoAdminNaHome);

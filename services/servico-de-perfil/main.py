@@ -30,7 +30,8 @@ async def startup_event():
     migrations = [
         "ALTER TABLE perfis_utilizadores ADD COLUMN IF NOT EXISTS nivel INTEGER DEFAULT 1;",
         "ALTER TABLE perfis_utilizadores ADD COLUMN IF NOT EXISTS xp_atual INTEGER DEFAULT 0;",
-        "ALTER TABLE perfis_utilizadores ADD COLUMN IF NOT EXISTS xp_proximo_nivel INTEGER DEFAULT 1000;"
+        "ALTER TABLE perfis_utilizadores ADD COLUMN IF NOT EXISTS xp_proximo_nivel INTEGER DEFAULT 1000;",
+        "ALTER TABLE perfis_utilizadores ADD COLUMN IF NOT EXISTS foto TEXT DEFAULT '';"
     ]
     
     for mig in migrations:
@@ -77,6 +78,11 @@ def obter_utilizador_atual(token: str = Depends(oauth2_scheme)):
 class XPRequest(BaseModel):
     xp: int
 
+class ProjetoCriarRequest(BaseModel):
+    titulo: str
+    papel: str
+    status_badge: str
+
 @app.put("/perfil/eu", response_model=schemas.PerfilCompletoResponse)
 async def atualizar_perfil(
     dados: schemas.PerfilUpdate,
@@ -107,6 +113,8 @@ async def atualizar_perfil(
         perfil.localizacao = dados.localizacao
     if dados.biografia is not None:
         perfil.biografia = dados.biografia
+    if dados.foto is not None:
+        perfil.foto = dados.foto  # 👈 Gravação da foto (URL ou Base64) na base de dados
     if dados.badge_funcao is not None:
         perfil.badge_funcao = dados.badge_funcao
 
@@ -191,6 +199,7 @@ async def obter_perfil_completo(
             arroba=f"@{utilizador_email.split('@')[0]}",
             localizacao="",
             biografia="",
+            foto="",
             badge_funcao="NOVO MEMBRO",
             nivel=1,
             xp_atual=0,
@@ -218,6 +227,61 @@ async def obter_perfil_completo(
         perfil = result.scalars().first()
 
     return perfil
+
+@app.post("/perfil/projetos", response_model=schemas.ProjetoDestaqueResponse)
+async def criar_projeto_perfil(
+    dados: ProjetoCriarRequest,
+    db: AsyncSession = Depends(database.obter_base_de_dados),
+    utilizador_email: str = Depends(obter_utilizador_atual)
+):
+    result = await db.execute(
+        select(models.PerfilModel)
+        .options(selectinload(models.PerfilModel.trofeus), selectinload(models.PerfilModel.atividades))
+        .filter(models.PerfilModel.utilizador_email == utilizador_email)
+    )
+    perfil = result.scalars().first()
+    if not perfil:
+        raise HTTPException(status_code=404, detail="Perfil não encontrado")
+
+    # Regra validada no servidor: Atribuição fixa de 100 XP por projeto criado
+    xp_ganho = 100
+    perfil.xp_atual += xp_ganho
+    perfil.projetos_qtd += 1
+    perfil.contribuicoes_anuais += 1
+
+    # Regra de progressão de nível automática
+    while perfil.xp_atual >= perfil.xp_proximo_nivel:
+        perfil.xp_atual -= perfil.xp_proximo_nivel
+        perfil.nivel += 1
+        perfil.xp_proximo_nivel = int(perfil.xp_proximo_nivel * 1.2)
+
+    novo_projeto = models.PerfilProjetoModel(
+        perfil_id=perfil.id,
+        titulo=dados.titulo,
+        papel=dados.papel,
+        progresso=100,
+        status_badge=dados.status_badge,
+        likes=0
+    )
+    db.add(novo_projeto)
+
+    # Desbloqueio automático de troféus com base nas regras de negócio
+    if perfil.projetos_qtd >= 1:
+        for t in perfil.trofeus:
+            if "Primeiro Projeto" in t.titulo or "Criador" in t.titulo or "Iniciador" in t.titulo:
+                t.concluido = True
+
+    db.add(models.PerfilAtividadeModel(
+        perfil_id=perfil.id,
+        descricao=f"Criou o projeto '{dados.titulo}' (+100 XP)",
+        tempo_atras="Agora mesmo",
+        likes=0,
+        comentarios_qtd=0
+    ))
+
+    await db.commit()
+    await db.refresh(novo_projeto)
+    return novo_projeto
 
 @app.post("/perfil/adicionar-xp")
 async def adicionar_xp(

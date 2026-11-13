@@ -49,7 +49,6 @@ app.mount("/admin-dashboard", StaticFiles(directory=ADMIN_DIR), name="admin-dash
 @app.on_event("startup")
 async def startup_event():
     async with database.engine.begin() as conn:
-        # CORREÇÃO: Alterado de models.Base para database.Base para corrigir o AttributeError
         await conn.run_sync(database.Base.metadata.create_all)
         
         await conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS favorito INTEGER DEFAULT 0;"))
@@ -64,7 +63,6 @@ async def startup_event():
         await conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS inspection_reason VARCHAR;"))
         await conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS inspection_message VARCHAR;"))
         await conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS inspection_reply VARCHAR;"))
-        # --- NOVOS CAMPOS: GITHUB, CÓDIGO ABERTO E COMPLIANCE ---
         await conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS github_url VARCHAR;"))
         await conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS codigo_aberto BOOLEAN DEFAULT FALSE;"))
         await conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS aceite_lgpd BOOLEAN DEFAULT FALSE;"))
@@ -76,7 +74,9 @@ DIRETORIO_POSTERS = os.path.join(BASE_DIR, "sandbox_posters")
 os.makedirs(DIRETORIO_BUILDS, exist_ok=True)
 os.makedirs(DIRETORIO_POSTERS, exist_ok=True)
 
+# Montagens robustas para abranger tanto /sandbox quanto /sandbox_builds
 app.mount("/sandbox", StaticFiles(directory=DIRETORIO_BUILDS), name="sandbox")
+app.mount("/sandbox_builds", StaticFiles(directory=DIRETORIO_BUILDS), name="sandbox_builds")
 app.mount("/posters", StaticFiles(directory=DIRETORIO_POSTERS), name="posters")
 
 class InspectionRequest(BaseModel):
@@ -209,7 +209,6 @@ async def listar_projetos(tag: str | None = Query(None), db: AsyncSession = Depe
             "inspection_reason": getattr(p, 'inspection_reason', None),
             "inspection_message": getattr(p, 'inspection_message', None),
             "inspection_reply": getattr(p, 'inspection_reply', None),
-            # --- NOVOS CAMPOS NA RESPOSTA ---
             "github_url": getattr(p, 'github_url', None),
             "codigo_aberto": getattr(p, 'codigo_aberto', False),
             "aceite_lgpd": getattr(p, 'aceite_lgpd', False),
@@ -239,7 +238,6 @@ async def criar_projeto_root(
     db: AsyncSession = Depends(database.get_db),
     token: str | None = Depends(oauth2_scheme)
 ):
-    # Validação obrigatória dos checkboxes de conformidade (LGPD e Normas)
     lgpd_bool = True if str(aceite_lgpd).lower() in ["true", "1", "on", "yes"] else False
     normas_bool = True if str(aceite_normas).lower() in ["true", "1", "on", "yes"] else False
 
@@ -436,7 +434,11 @@ async def excluir_projeto(
     dono = (p.owner or p.user_id or "").strip().lower()
     atual = (utilizador_email or "").strip().lower()
     
-    if atual != "admin" and dono != "" and dono != atual:
+    # Verifica se o utilizador atual é o administrador global
+    is_admin = (atual == 'admin' or atual == 'admin@ludarium.com' or 'admin' in atual)
+    
+    # Permite a exclusão se for o dono OU se for o administrador
+    if dono != atual and not is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, 
             detail="Não tem permissão para excluir este projeto."
@@ -609,7 +611,8 @@ async def atualizar_projeto(
     dono = (p.owner or p.user_id or "").strip().lower()
     atual = (utilizador_email or "").strip().lower()
     
-    if atual != "admin" and dono != "" and dono != atual:
+    # CORREÇÃO DA AUTORIZAÇÃO: Apenas o dono pode editar (sem bypass de admin para usuários comuns)
+    if dono == "" or dono != atual:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, 
             detail="Não tem permissão para editar este projeto."

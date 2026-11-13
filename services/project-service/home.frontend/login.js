@@ -1,272 +1,239 @@
-// ==========================================
-// LUDARIUM - SCRIPT DE AUTENTICAÇÃO E LOGIN (AUTH.JS)
-// Compatível com Localhost e Cloudflare Tunnel
-// ==========================================
+function initializeTextGlow() {
+    const logo = document.getElementById('ludarium-sign');
+    const title = document.getElementById('main-title');
+    const intro = document.querySelector('.intro');
 
-// Variável de controlo para alternar entre ecrã de Login e Registo
-let modoRegistoAtivo = false;
+    const titleLines = title
+        ? Array.from(title.querySelectorAll('.title-line'))
+        : [];
 
-/**
- * Exibe uma notificação Toast flutuante elegante no canto inferior direito
- */
-function mostrarToast(mensagem, tipo = 'sucesso') {
-    let container = document.getElementById('toastContainer');
-    if (!container) {
-        container = document.createElement('div');
-        container.id = 'toastContainer';
-        container.style.cssText = "position: fixed; bottom: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 10px;";
-        document.body.appendChild(container);
+    function restartGlow(element, duration = 1800) {
+        element.classList.remove('glow-running');
+        void element.offsetWidth;
+        element.style.setProperty('--glow-duration', `${duration}ms`);
+        element.classList.add('glow-running');
+
+        window.setTimeout(() => {
+            element.classList.remove('glow-running');
+        }, duration + 100);
     }
 
-    if (!document.getElementById('spinner-style')) {
-        const style = document.createElement('style');
-        style.id = 'spinner-style';
-        style.innerHTML = `@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`;
-        document.head.appendChild(style);
-    }
-
-    const toast = document.createElement('div');
-    const corFundo = tipo === 'sucesso' ? '#7c3aed' : '#ef4444';
-    
-    toast.style.cssText = `background: ${corFundo}; color: #fff; padding: 12px 20px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.4); font-size: 0.9rem; font-weight: 500; opacity: 0; transition: opacity 0.3s ease; border: 1px solid rgba(255,255,255,0.2);`;
-    toast.textContent = mensagem;
-    
-    container.appendChild(toast);
-    setTimeout(() => { toast.style.opacity = '1'; }, 50);
-
-    setTimeout(() => {
-        toast.style.opacity = '0';
-        setTimeout(() => toast.remove(), 300);
-    }, 3500);
-}
-
-/**
- * Controla o estado de carregamento de um botão com um spinner animado
- */
-function definirBotaoCarregamento(botao, aCarregar, textoOriginal = "ENTRAR NA LUDARIUM →") {
-    if (!botao) return;
-    if (aCarregar) {
-        botao.disabled = true;
-        botao.dataset.textoOriginal = botao.textContent;
-        botao.innerHTML = `<span style="display: inline-block; width: 14px; height: 14px; border: 2px solid #fff; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 8px; vertical-align: middle;"></span> A processar...`;
-    } else {
-        botao.disabled = false;
-        botao.textContent = botao.dataset.textoOriginal || textoOriginal;
-    }
-}
-
-/**
- * Adiciona suporte para submeter o formulário pressionando a tecla Enter
- */
-document.addEventListener("DOMContentLoaded", () => {
-    const inputs = document.querySelectorAll('#authFormContainer input');
-    inputs.forEach(input => {
-        input.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                executarAcaoAuth();
-            }
+    if (logo) {
+        logo.addEventListener('mouseenter', () => {
+            restartGlow(logo, 1800);
         });
+    }
+
+    if (title) {
+        title.addEventListener('mouseenter', () => {
+            titleLines.forEach((line, index) => {
+                window.setTimeout(() => {
+                    restartGlow(line, 1800);
+                }, index * 250);
+            });
+        });
+    }
+
+    if (intro) {
+        intro.addEventListener('mouseenter', () => {
+            restartGlow(intro, 1800);
+        });
+    }
+}
+
+initializeTextGlow();
+
+// ================= CONFIGURAÇÃO DE ROTA AUTOMÁTICA (LOCAL PORTA 8005/Gateway ou Cloudflare) =================
+const API_BASE_URL = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+    ? ""  // Se estiver a usar o Gateway na mesma origem ou directas nas portas
+    : `${window.location.protocol}//${window.location.host}`;
+
+// Obter token JWT armazenado estritamente na sessão da aba atual
+function obterToken() {
+    return sessionStorage.getItem("ludaryumToken") || "";
+}
+
+/* ===== ABRIR E FECHAR JANELA DE CADASTRO ===== */
+const botaoAbrirCadastro = document.getElementById("abrir-cadastro");
+const modalCadastro = document.getElementById("cadastro-modal");
+const botaoFecharCadastro = document.getElementById("fechar-cadastro");
+
+if (botaoAbrirCadastro && modalCadastro && botaoFecharCadastro) {
+    botaoAbrirCadastro.addEventListener("click", function () {
+        modalCadastro.classList.add("aberto");
+        modalCadastro.setAttribute("aria-hidden", "false");
+        document.body.style.overflow = "hidden";
     });
-});
 
-/**
- * Alterna dinamicamente os campos e a ação do botão entre Entrar e Criar Conta
- */
-function alternarModoAuth(event) {
-    if (event) event.preventDefault();
-    modoRegistoAtivo = !modoRegistoAtivo;
-
-    const title = document.getElementById('formTitle');
-    const subtitle = document.getElementById('formSubtitle');
-    const btn = document.getElementById('authBtnAction');
-    const toggleText = document.getElementById('toggleText');
-    const toggleLink = document.getElementById('toggleLink');
-    const userFieldContainer = document.getElementById('usernameFieldContainer');
-    const labelUserEmail = document.getElementById('labelUserEmail');
-    const suggestionsBox = document.getElementById('suggestionsBox');
-
-    if (suggestionsBox) suggestionsBox.style.display = 'none';
-
-    if (modoRegistoAtivo) {
-        if (title) title.textContent = 'Junte-se ao Ludarium.';
-        if (subtitle) subtitle.textContent = 'Crie a sua conta para publicar e gerir os seus jogos.';
-        if (btn) btn.textContent = 'CRIAR CONTA →';
-        if (toggleText) toggleText.textContent = 'Já tem uma conta?';
-        if (toggleLink) toggleLink.textContent = 'Entrar';
-        if (userFieldContainer) userFieldContainer.style.display = 'block';
-        if (labelUserEmail) labelUserEmail.textContent = 'EMAIL DE ACESSO';
-        const loginUser = document.getElementById('loginUser');
-        if (loginUser) loginUser.placeholder = 'seu@email.com';
-    } else {
-        if (title) title.textContent = 'Continue construindo.';
-        if (subtitle) subtitle.textContent = 'Acesse seu perfil, projetos e jornadas em andamento.';
-        if (btn) btn.textContent = 'ENTRAR NA LUDARIUM →';
-        if (toggleText) toggleText.textContent = 'Ainda não tem conta?';
-        if (toggleLink) toggleLink.textContent = 'Criar uma conta';
-        if (userFieldContainer) userFieldContainer.style.display = 'none';
-        if (labelUserEmail) labelUserEmail.textContent = 'UTILIZADOR OU EMAIL';
-        const loginUser = document.getElementById('loginUser');
-        if (loginUser) loginUser.placeholder = 'Ex.: admin ou email@teste.com';
+    function fecharModalCadastro() {
+        modalCadastro.classList.remove("aberto");
+        modalCadastro.setAttribute("aria-hidden", "true");
+        document.body.style.overflow = "";
     }
+
+    botaoFecharCadastro.addEventListener("click", fecharModalCadastro);
+
+    modalCadastro.addEventListener("click", function (evento) {
+        if (evento.target === modalCadastro) {
+            fecharModalCadastro();
+        }
+    });
+
+    document.addEventListener("keydown", function (evento) {
+        if (evento.key === "Escape" && modalCadastro.classList.contains("aberto")) {
+            fecharModalCadastro();
+        }
+    });
 }
 
-/**
- * Preenche o formulário automaticamente com o administrador de demonstração
- */
-function preencherAdminDemo() {
-    if (modoRegistoAtivo) {
-        alternarModoAuth({ preventDefault: () => {} });
-    }
-    const loginUser = document.getElementById('loginUser');
-    const loginPass = document.getElementById('loginPass');
-    if (loginUser) loginUser.value = 'admin';
-    if (loginPass) loginPass.value = 'admin';
-    mostrarToast('Credenciais de Administrador carregadas!', 'sucesso');
-}
+/* ===== VALIDAR E EXECUTAR CADASTRO NO BANCO DE DADOS ===== */
+const formularioCadastro = document.getElementById("form-cadastro");
+const mensagemCadastro = document.getElementById("cadastro-mensagem");
 
-/**
- * Direciona para a função correta dependendo se está no modo de Login ou de Registo
- */
-function executarAcaoAuth() {
-    if (modoRegistoAtivo) {
-        fazerRegisto();
-    } else {
-        fazerLogin();
-    }
-}
+if (formularioCadastro && mensagemCadastro) {
+    formularioCadastro.addEventListener("submit", async function (evento) {
+        evento.preventDefault();
 
-/**
- * Realiza o registo de um novo utilizador e redireciona para o login
- */
-async function fazerRegisto() {
-    const usernameInput = document.getElementById('regUsername');
-    const emailInput = document.getElementById('loginUser');
-    const passInput = document.getElementById('loginPass');
+        const emailInput = document.getElementById("cadastro-email") || document.getElementById("email-cadastro");
+        const senha = document.getElementById("cadastro-senha").value;
+        const confirmarSenha = document.getElementById("cadastro-confirmar").value;
+        const nomeInput = document.getElementById("cadastro-nome") || document.getElementById("nome-cadastro");
 
-    const username = usernameInput ? usernameInput.value.trim() : '';
-    const email = emailInput ? emailInput.value.trim() : '';
-    const pass = passInput ? passInput.value : '';
+        const aceiteTermos = document.getElementById("aceite-termos");
+        const aceitePrivacidade = document.getElementById("aceite-privacidade");
 
-    if (!username || !email || !pass) {
-        mostrarToast('Por favor, preencha todos os campos do registo.', 'erro');
-        return;
-    }
-
-    const btn = document.getElementById('authBtnAction');
-    definirBotaoCarregamento(btn, true, 'CRIAR CONTA →');
-
-    try {
-        const response = await fetch(`/register`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: username, email: email, password: pass })
-        });
-
-        if (!response.ok) {
-            const errData = await response.json().catch(() => ({}));
-            const mensagemErro = errData.detail || 'Utilizador ou email já existente.';
-            
-            if (mensagemErro.toLowerCase().includes('já existe') || response.status === 400 || response.status === 422) {
-                exibirSugestoesUtilizador(username);
-            }
-            throw new Error(mensagemErro);
+        if (aceiteTermos && aceitePrivacidade && (!aceiteTermos.checked || !aceitePrivacidade.checked)) {
+            mensagemCadastro.style.color = "#ff8fa3";
+            mensagemCadastro.textContent = "Aceite os Termos de Uso e confirme a leitura da Política de Privacidade.";
+            return;
         }
 
-        mostrarToast('Conta criada com sucesso! Faça login para continuar.', 'sucesso');
-        
-        alternarModoAuth({ preventDefault: () => {} });
-        if (emailInput) emailInput.value = email;
-        if (passInput) passInput.value = '';
-        
-    } catch (error) {
-        console.warn('Erro no registo: ' + error.message);
-        mostrarToast(error.message, 'erro');
-    } finally {
-        definirBotaoCarregamento(btn, false, 'CRIAR CONTA →');
-    }
-}
+        if (senha !== confirmarSenha) {
+            mensagemCadastro.style.color = "#ff8fa3";
+            mensagemCadastro.textContent = "As senhas não são iguais!";
+            return;
+        }
 
-/**
- * Exibe sugestões de nomes alternativos caso o nome de utilizador já esteja em uso
- */
-function exibirSugestoesUtilizador(nomeTentado) {
-    const suggestionsBox = document.getElementById('suggestionsBox');
-    const suggestionsList = document.getElementById('suggestionsList');
-    if (!suggestionsBox || !suggestionsList) return;
+        const email = emailInput ? emailInput.value.trim() : "";
+        const nome = nomeInput ? nomeInput.value.trim() : email.split("@")[0];
 
-    suggestionsList.innerHTML = '';
+        mensagemCadastro.style.color = "#38bdf8";
+        mensagemCadastro.textContent = "A registar conta no servidor...";
 
-    const sufixos = [
-        Math.floor(Math.random() * 900 + 100),
-        '_dev',
-        '_indie'
-    ];
+        try {
+            const resposta = await fetch(`${API_BASE_URL}/register`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    email: email,
+                    password: senha,
+                    nome: nome
+                })
+            });
 
-    sufixos.forEach(sufixo => {
-        const sugestao = `${nomeTentado}${sufixo}`;
-        const chip = document.createElement('div');
-        chip.className = 'suggestion-chip';
-        chip.style.cssText = "background: #7c3aed; color: #fff; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: bold; display: inline-block; margin: 3px;";
-        chip.textContent = `@${sugestao}`;
-        chip.onclick = () => {
-            const regUsername = document.getElementById('regUsername');
-            if (regUsername) regUsername.value = sugestao;
-
-            const emailInput = document.getElementById('loginUser');
-            if (emailInput) {
-                emailInput.value = `${sugestao}@ludarium.com`;
+            if (!resposta.ok) {
+                const erroServidor = await resposta.json();
+                throw new Error(erroServidor.detail || "Erro ao criar conta no banco de dados.");
             }
 
-            suggestionsBox.style.display = 'none';
-        };
-        suggestionsList.appendChild(chip);
-    });
+            mensagemCadastro.style.color = "#7dffb3";
+            mensagemCadastro.textContent = "Conta criada com sucesso! Redirecionando ou faça login...";
+            
+            setTimeout(() => {
+                fecharModalCadastro();
+                formularioCadastro.reset();
+            }, 1500);
 
-    suggestionsBox.style.display = 'block';
+        } catch (erro) {
+            console.error("Erro no registo:", erro);
+            mensagemCadastro.style.color = "#ff8fa3";
+            mensagemCadastro.textContent = "Erro: " + erro.message;
+        }
+    });
 }
 
-/**
- * Realiza o login e redireciona para a home usando o caminho relativo correto compatível com o Gateway
- */
-async function fazerLogin() {
-    const userInput = document.getElementById('loginUser');
-    const passInput = document.getElementById('loginPass');
+/* ===== EXECUÇÃO DO LOGIN COM JWT E BANCO DE DADOS ===== */
+const formularioLogin = document.getElementById("login-form");
+const mensagemLogin = document.getElementById("login-message");
 
-    const user = userInput ? userInput.value.trim() : '';
-    const pass = passInput ? passInput.value.trim() : '';
+if (formularioLogin && mensagemLogin) {
+    formularioLogin.addEventListener("submit", async function (evento) {
+        evento.preventDefault();
 
-    if (!user || !pass) {
-        mostrarToast('Por favor, preencha o utilizador/email e a senha.', 'erro');
-        return;
-    }
+        const emailInput = document.getElementById("username") || document.getElementById("email") || document.getElementById("login-email");
+        const senhaInput = document.getElementById("password") || document.getElementById("login-senha");
 
-    const btn = document.getElementById('authBtnAction');
-    definirBotaoCarregamento(btn, true, 'ENTRAR NA LUDARIUM →');
+        const email = emailInput ? emailInput.value.trim() : "";
+        const senha = senhaInput ? senhaInput.value : "";
 
-    try {
-        const response = await fetch(`/login`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({ username: user, password: pass })
-        });
+        if (!email || !senha) {
+            mensagemLogin.style.color = "#ff8fa3";
+            mensagemLogin.textContent = "Preencha o utilizador/e-mail e a palavra-passe.";
+            return;
+        }
 
-        if (!response.ok) throw new Error('Utilizador ou senha incorretos.');
+        mensagemLogin.style.color = "#38bdf8";
+        mensagemLogin.textContent = "A autenticar com o banco de dados...";
 
-        const data = await response.json();
-        const token = data.access_token || data.token;
-        if (!token) throw new Error('Token não recebido do servidor.');
+        try {
+            const formData = new URLSearchParams();
+            formData.append("username", email);
+            formData.append("password", senha);
 
-        localStorage.setItem('ludarium_token', token);
-        mostrarToast('Login efetuado com sucesso! Redirecionando...', 'sucesso');
+            const resposta = await fetch(`${API_BASE_URL}/login`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded"
+                },
+                body: formData
+            });
 
-        // Redirecionamento corrigido para a pasta home-ui garantindo compatibilidade com o Gateway
-        setTimeout(() => {
-            window.location.href = `../home-ui/home.html?token=${encodeURIComponent(token)}`;
-        }, 800);
-    } catch (error) {
-        mostrarToast('Erro no login: ' + error.message, 'erro');
-    } finally {
-        definirBotaoCarregamento(btn, false, 'ENTRAR NA LUDARIUM →');
-    }
+            if (!resposta.ok) {
+                throw new Error("Credenciais inválidas ou utilizador não encontrado.");
+            }
+
+            const dados = await resposta.json();
+            
+            // GUARDAR ESTritamente NO sessionStorage (Isolado por aba, sem interferir com outras contas abertas)
+            if (dados.access_token) {
+                sessionStorage.setItem("ludaryumToken", dados.access_token);
+                sessionStorage.setItem("ludaryumNome", email);
+            }
+
+            mensagemLogin.style.color = "#7dffb3";
+            mensagemLogin.textContent = "Login efetuado com sucesso! A entrar no ecossistema...";
+
+            setTimeout(() => {
+                window.location.href = "/home-ui/home.html";
+            }, 1000);
+
+        } catch (erro) {
+            console.error("Erro no login:", erro);
+            mensagemLogin.style.color = "#ff8fa3";
+            mensagemLogin.textContent = "Falha no login: verifique os seus dados.";
+        }
+    });
+}
+
+function nomeFromEmail(email) {
+    if (!email) return "Utilizador";
+    return email.split("@")[0];
+}
+
+/* ===== MOSTRAR E OCULTAR SENHA ===== */
+const campoSenhaLogin = document.getElementById("password");
+const botaoMostrarSenha = document.getElementById("toggle-password");
+
+if (campoSenhaLogin && botaoMostrarSenha) {
+    botaoMostrarSenha.addEventListener("click", function () {
+        if (campoSenhaLogin.type === "password") {
+            campoSenhaLogin.type = "text";
+            botaoMostrarSenha.textContent = "OCULTAR";
+        } else {
+            campoSenhaLogin.type = "password";
+            botaoMostrarSenha.textContent = "MOSTRAR";
+        }
+    });
 }

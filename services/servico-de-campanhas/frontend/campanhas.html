@@ -1,121 +1,585 @@
 <!DOCTYPE html>
-<html lang="pt">
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ludarium - Gestão de Campanhas</title>
-    <link rel="stylesheet" href="style.css">
-    <style>
-        /* Estilo estrito para ocultar elementos exclusivos de admin por padrão */
-        .admin-only {
-            display: none !important;
-        }
-    </style>
+
+    <title>Campanhas | Ludaryum</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="campanhas.css">
 </head>
-<body onload="verificarSessaoCampanhas()">
-    <!-- Barra de Navegação Unificada -->
-    <nav class="main-navbar">
-        <div class="nav-container">
-            <span class="nav-brand">Ludaryum Hub</span>
-            <ul class="nav-links">
-                <li><a href="/home-ui/home.html">Projetos</a></li>
-                <li><a href="/comunidade-ui/community.html">Comunidade</a></li>
-                <li><a href="/campanhas-ui/campanhas.html" class="active">Campanhas</a></li>
-                <li><a href="/perfil-ui/perfil.html">Perfil</a></li>
-                <li id="admin-menu-item" class="admin-only">
-                    <a href="/admin-ui/admin.html" style="color: #f59e0b; font-weight: bold;">⚙️ Painel Admin</a>
-                </li>
-            </ul>
-        </div>
+<body>
+
+<header class="navbar">
+
+    <a href="/home-ui/home.html" class="logo">
+        <span class="brand-moon" aria-hidden="true"></span>
+        <span class="logo-sign">LUDARYUM</span>
+    </a>
+
+    <nav class="nav-links">
+        <a href="/home-ui/home.html">Explorar</a>
+        <a href="/comunidade-ui/comunidade.html">Comunidade</a>
+        <a href="/campanhas-ui/campanhas.html">Campanhas</a>
     </nav>
 
-    <div class="container">
-        <header>
-            <h1>Painel de Campanhas</h1>
-            <p>Gerencie e teste as campanhas do Ludarium em tempo real.</p>
-        </header>
-
-        <!-- Formulário para Criar Campanha -->
-        <section class="card">
-            <h2>Criar Nova Campanha</h2>
-            <form id="campaign-form">
-                <div class="form-group">
-                    <label for="title">Título:</label>
-                    <input type="text" id="title" required placeholder="Ex: Campanha de Lançamento">
-                </div>
-                <div class="form-group">
-                    <label for="description">Descrição:</label>
-                    <textarea id="description" required placeholder="Detalhes da campanha..."></textarea>
-                </div>
-                <div class="form-group">
-                    <label for="goal">Meta (Recompensa XP / Pontos):</label>
-                    <input type="number" id="goal" required placeholder="Ex: 2500">
-                </div>
-                <button type="submit" class="btn">Criar Campanha</button>
-            </form>
-        </section>
-
-        <!-- Lista de Campanhas -->
-        <section class="card">
-            <h2>Campanhas Existentes</h2>
-            <div id="campaigns-list" class="grid-list">
-                <p class="loading">A carregar campanhas...</p>
-            </div>
-        </section>
+    <div class="nav-search">
+        <span class="search-icon">⌕</span>
+        <input
+            type="search"
+            id="buscar-campanhas"
+            placeholder="Buscar campanhas..."
+            aria-label="Buscar campanhas"
+        >
     </div>
 
-    <!-- Script de Gestão de Links e Passagem de Token Integrada -->
-    <script>
-        document.addEventListener("DOMContentLoaded", () => {
-            const linksMenu = document.querySelectorAll('.nav-links a');
-            linksMenu.forEach(link => {
-                link.addEventListener('click', (e) => {
-                    const token = localStorage.getItem('ludarium_token') || localStorage.getItem('access_token');
-                    if (token && !link.getAttribute('href').includes('token=')) {
-                        e.preventDefault();
-                        try {
-                            const urlDestino = new URL(link.href, window.location.origin);
-                            urlDestino.searchParams.set('token', token);
-                            window.location.href = urlDestino.toString();
-                        } catch (err) {
-                            window.location.href = link.href + '?token=' + token;
-                        }
-                    }
-                });
-            });
-        });
+    <div class="nav-acoes">
 
-        async function verificarSessaoCampanhas() {
-            const token = localStorage.getItem('ludarium_token') || localStorage.getItem('access_token');
-            if (!token) return;
+        <button
+            type="button"
+            class="nav-icone"
+            id="alternar-tema"
+            aria-label="Alternar tema"
+            title="Alternar tema"
+        >
+            <svg id="icone-tema" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
+            </svg>
+        </button>
 
-            try {
-                const response = await fetch(`/me`, {
-                    headers: { 'Authorization': 'Bearer ' + token }
-                });
-                if (!response.ok) return;
-                const user = await response.json();
+        <button
+            type="button"
+            class="nav-icone"
+            id="abrir-notificacoes"
+            aria-label="Abrir notificações"
+            title="Notificações"
+        >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path>
+                <path d="M10 21h4"></path>
+            </svg>
+            <span class="notificacao-indicador" id="notificacao-indicador"></span>
+        </button>
 
-                const isAdmin = (user.username === 'admin' || user.email === 'admin@ludarium.com' || user.is_admin === true);
-                const elementosAdmin = document.querySelectorAll('.admin-only');
+        <div class="painel-notificacoes" id="painel-notificacoes">
+            <div class="notificacoes-cabecalho">
+                <h3>Notificações</h3>
+                <button type="button" id="fechar-notificacoes" aria-label="Fechar notificações">×</button>
+            </div>
 
-                if (isAdmin) {
-                    elementosAdmin.forEach(el => {
-                        el.classList.remove('admin-only');
-                        el.style.display = 'block';
-                    });
-                } else {
-                    elementosAdmin.forEach(el => {
-                        el.classList.add('admin-only');
-                        el.style.display = 'none';
-                    });
-                }
-            } catch (e) {
-                console.warn('Erro ao verificar permissões de admin nas campanhas:', e);
-            }
-        }
-    </script>
+            <div class="lista-notificacoes" id="lista-notificacoes">
+                <p class="notificacoes-vazio">Você ainda não tem notificações.</p>
+            </div>
+        </div>
 
-    <script src="script.js"></script>
+    </div>
+
+    <div class="perfil-container">
+        <button
+            class="avatar"
+            type="button"
+            id="botao-perfil"
+            aria-label="Abrir menu do perfil"
+            aria-expanded="false"
+        >
+            <span id="iniciais-perfil-menu">LM</span>
+        </button>
+
+        <div class="menu-perfil" id="menu-perfil" hidden>
+            <div class="perfil-menu-cabecalho">
+                <div class="perfil-menu-avatar" id="avatar-menu-perfil">LM</div>
+
+                <div class="perfil-menu-info">
+                    <strong class="perfil-menu-nome" id="nome-menu-perfil">Lia Monteiro</strong>
+                    <span>Nível 24 · 3.420 XP</span>
+                </div>
+
+                <span class="perfil-status" title="Online"></span>
+            </div>
+
+            <!-- Corrigido para a rota absoluta correta do Gateway -->
+            <a href="/perfil-ui/perfil.html" class="perfil-menu-opcao">
+                <span class="perfil-menu-icone" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="8" r="4"></circle>
+                        <path d="M4 21v-2a8 8 0 0 1 16 0v2"></path>
+                    </svg>
+                </span>
+                <span>VER MEU PERFIL</span>
+            </a>
+
+            <!-- Corrigido para a rota absoluta correta do Gateway -->
+            <a href="/configuracoes/configuracoes.html" class="perfil-menu-opcao">
+                <span class="perfil-menu-icone" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                    </svg>
+                </span>
+                <span>CONFIGURAÇÕES</span>
+            </a>
+
+            <div class="perfil-menu-divisor"></div>
+
+            <button type="button" id="desconectar" class="perfil-menu-sair">
+                <span>⇥</span>
+                <span>SAIR DA LUDARYUM</span>
+            </button>
+        </div>
+    </div>
+
+</header>
+
+
+    <!-- CONTEÚDO PRINCIPAL -->
+    <main class="campaign-page">
+
+        <section class="season-heading">
+            <div>
+                <span class="eyebrow">TEMPORADA LUDARYUM</span>
+                <h1>Jogue, evolua e conquiste seu lugar</h1>
+                <p>Participe de desafios, crie jogos e ganhe recompensas.</p>
+            </div>
+
+            <div class="global-position">
+                <span class="position-number">18</span>
+                <div>
+                    <small>SUA POSIÇÃO GLOBAL</small>
+                    <strong>Subiu 6 posições esta semana</strong>
+                </div>
+            </div>
+        </section>
+
+            <!-- PAINEL DE PROGRESSO DO JOGADOR -->
+        <section class="player-progress-panel">
+
+            <div class="player-level">
+                <span class="eyebrow">SUA JORNADA</span>
+                <div class="level-number">NÍVEL 24</div>
+                <h3>Criadora Experiente</h3>
+                <p>Continue participando para evoluir na Ludaryum.</p>
+            </div>
+
+            <div class="player-xp">
+                <div class="xp-heading">
+                    <strong>Seu progresso</strong>
+                    <span>3.420 / 4.000 XP</span>
+                </div>
+
+                <div class="xp-progress-bar">
+                    <div class="xp-progress-fill"></div>
+                </div>
+
+                <small>Faltam 580 XP para o próximo nível</small>
+            </div>
+
+            <div class="player-stats">
+                <div>
+                    <strong>08</strong>
+                    <span>Concluídas</span>
+                </div>
+
+                <div>
+                    <strong>03</strong>
+                    <span>Em andamento</span>
+                </div>
+
+                <div>
+                    <strong>05</strong>
+                    <span>Vidas</span>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- BANNER PRINCIPAL -->
+        <section class="featured-campaign">
+            <div class="featured-content">
+                <span class="eyebrow">PRÓXIMA GRANDE GAME JAM</span>
+                <h2>Horizontes<br>Solarpunk</h2>
+
+                <p>
+                    Crie futuros habitáveis em que tecnologia,
+                    comunidade e natureza jogam no mesmo time.
+                </p>
+
+                <div class="campaign-tags">
+                    <span>14 DIAS</span>
+                    <span>4.000 XP</span>
+                    <span>EQUIPE OU SOLO</span>
+                </div>
+
+                <a href="#calendario" class="primary-button">
+                    EXPLORAR CAMPANHAS →
+                </a>
+            </div>
+                </section>
+
+        <!-- DETALHES DA CAMPANHA SELECIONADA -->
+        <section class="campaign-details" data-campaign-details="solarpunk">
+            <div class="details-banner">
+                <span class="eyebrow">CAMPANHA EM DESTAQUE</span>
+                <h2>Horizontes Solarpunk</h2>
+                <p>
+                    Construa um futuro onde natureza, tecnologia
+                    e criatividade caminham juntas.
+                </p>
+                <span class="details-deadline">14 DIAS RESTANTES</span>
+            </div>
+
+            <div class="details-content">
+                <div class="details-heading">
+                    <div>
+                        <span class="eyebrow">SUA MISSÃO</span>
+                        <h3>Objetivos da campanha</h3>
+                    </div>
+                    <strong>0 de 7 concluídos</strong>
+                </div>
+
+                <div class="details-progress">
+                    <div class="details-progress-fill"></div>
+                </div>
+
+                <div class="objectives-list">
+                    <label><input type="checkbox"> Entrar ou criar uma equipe</label>
+                    <label><input type="checkbox"> Registrar a apresentação do projeto</label>
+                    <label><input type="checkbox"> Publicar o primeiro diário de desenvolvimento</label>
+                    <label><input type="checkbox"> Enviar uma versão jogável</label>
+                    <label><input type="checkbox"> Avaliar dois projetos participantes</label>
+                    <label><input type="checkbox"> Publicar o projeto final</label>
+                    <label><input type="checkbox"> Participar da apresentação final</label>
+                </div>
+
+                <button class="join-campaign-button" id="join-campaign">
+                    PARTICIPAR DA CAMPANHA
+                </button>
+
+            </div>
+        </section>
+
+        <!-- CONQUISTA DA CAMPANHA -->
+        <section class="achievement-panel">
+            <div class="achievement-icon">🏆</div>
+
+            <div class="achievement-info">
+                <span class="eyebrow">CONQUISTA ESPECIAL</span>
+                <h2>Guardião de Histórias</h2>
+                <p>
+                    Complete todos os objetivos e publique sua experiência
+                    jogável para conquistar esta medalha.
+                </p>
+
+                <div class="achievement-progress">
+                    <div class="achievement-progress-fill"></div>
+                </div>
+
+                <small>0 de 7 objetivos concluídos</small>
+            </div>
+
+            <div class="achievement-reward">
+                <strong>+1.000 XP</strong>
+                <span>RECOMPENSA</span>
+            </div>
+        </section>
+
+        <!-- DUAS COLUNAS -->
+        <section class="campaign-layout">
+
+            <div class="campaign-main">
+                <!-- FILTROS DE CAMPANHAS -->
+<section class="campaign-filters">
+
+    <div class="filters-heading">
+        <span class="eyebrow">ENCONTRE SEU DESAFIO</span>
+        <h2>Explore por categoria</h2>
+    </div>
+
+    <div class="filter-buttons">
+        <button class="filter-button active" data-category="todos">Todos</button>
+        <button class="filter-button" data-category="trilhas">Trilhas de estudo</button>
+        <button class="filter-button" data-category="tecnicos">Desafios técnicos</button>
+        <button class="filter-button" data-category="gamejam">Game Jam</button>
+        <button class="filter-button" data-category="empresas">Empresas</button>
+        <button class="filter-button" data-category="comunidade">Comunidade</button>
+    </div>
+
+</section>
+                <section class="calendar-panel" id="calendario">
+                    <div class="panel-heading">
+                        <div>
+                            <span class="eyebrow">CALENDÁRIO DA ARENA</span>
+                            <h2>Próximas campanhas</h2>
+                        </div>
+                    </div>
+
+                    <div class="campaign-list">
+                        <article class="campaign-item active" data-category="gamejam" data-campaign="solarpunk">
+                            <div class="date-box">18<br><small>MAR</small></div>
+                            <div class="campaign-info">
+                                <h3>Horizontes Solarpunk</h3>
+                                <p>Game Jam · 14 dias · Inscrições abertas</p>
+                            </div>
+                            <strong class="xp-value">4.000 XP</strong>
+                        </article>
+
+                        <article class="campaign-item" data-category="tecnicos" data-campaign="acessibilidade">
+                            <div class="date-box">27<br><small>MAR</small></div>
+                            <div class="campaign-info">
+                                <h3>Acessibilidade em primeiro lugar</h3>
+                                <p>Desafio técnico · 7 dias</p>
+                            </div>
+                            <strong class="xp-value">2.200 XP</strong>
+                        </article>
+
+                        <article class="campaign-item" data-category="trilhas" data-campaign="npcs">
+                            <div class="date-box">05<br><small>ABR</small></div>
+                            <div class="campaign-info">
+                                <h3>NPCs que parecem vivos</h3>
+                                <p>Trilha prática · 3 semanas</p>
+                            </div>
+                            <strong class="xp-value">3.100 XP</strong>
+                        </article>
+                    </div>
+
+                    <div class="empty-campaign-message" id="empty-campaign-message" hidden>
+    <span>🔎</span>
+    <h3>Novas campanhas em breve!</h3>
+    <p>
+        Ainda não há desafios disponíveis nesta categoria.
+        Fique de olho nas próximas novidades da Ludaryum!
+    </p>
+</div>
+                </section>
+            </div>
+
+            <!-- COLUNA DIREITA -->
+            <aside class="campaign-sidebar">
+                <section class="ranking-panel">
+                    <div class="panel-heading">
+                        <div>
+                            <span class="eyebrow">RANKING GLOBAL</span>
+                            <h2>Líderes da temporada</h2>
+                        </div>
+                        <span class="trophy">♜</span>
+                    </div>
+
+                    <div class="ranking-item">
+                        <span class="rank-number">01</span>
+                        <span class="avatar avatar-orange">NR</span>
+                        <div class="player-info">
+                            <strong>Nina Rocha</strong>
+                            <small>Godot · Gameplay</small>
+                        </div>
+                        <strong class="xp-value">18.420 XP</strong>
+                    </div>
+
+                    <div class="ranking-item">
+                        <span class="rank-number">02</span>
+                        <span class="avatar avatar-blue">CM</span>
+                        <div class="player-info">
+                            <strong>Caio Martins</strong>
+                            <small>Unity · Tech Art</small>
+                        </div>
+                        <strong class="xp-value">17.880 XP</strong>
+                    </div>
+
+                    <div class="ranking-item">
+                        <span class="rank-number">03</span>
+                        <span class="avatar avatar-pink">BT</span>
+                        <div class="player-info">
+                            <strong>Bia Tavares</strong>
+                            <small>Narrativa · UX</small>
+                        </div>
+                        <strong class="xp-value">15.940 XP</strong>
+                    </div>
+
+                    <div class="ranking-item current-player">
+                        <span class="rank-number">18</span>
+                        <span class="avatar avatar-purple">LM</span>
+                        <div class="player-info">
+                            <strong>Você</strong>
+                            <small>Sua posição na temporada</small>
+                        </div>
+                        <strong class="xp-value">9.630 XP</strong>
+                    </div>
+                </section>
+
+                <section class="voting-panel">
+                    <span class="eyebrow">TEMAS EM VOTAÇÃO</span>
+                    <h2>Escolha a próxima jam</h2>
+                    <p>A comunidade decide os desafios da próxima temporada.</p>
+
+                    <div class="vote-option">
+                        <span class="vote-number">01</span>
+                        <span class="vote-copy">
+                            <strong>Memórias sem texto</strong>
+                            <small>642 participantes</small>
+                        </span>
+                    </div>
+
+                    <div class="vote-option">
+                        <span class="vote-number">02</span>
+                        <span class="vote-copy">
+                            <strong>Um mundo em uma tela</strong>
+                            <small>518 participantes</small>
+                        </span>
+                    </div>
+
+                    <div class="vote-option">
+                        <span class="vote-number">03</span>
+                        <span class="vote-copy">
+                            <strong>O tempo como protagonista</strong>
+                            <small>391 participantes</small>
+                        </span>
+                    </div>
+                </section>
+            </aside>
+
+        </section>
+
+        <!-- PARTICIPANTES E CONEXÕES -->
+<section class="participants-panel">
+
+    <div class="panel-heading">
+        <div>
+            <span class="eyebrow">SUA COMUNIDADE</span>
+            <h2>Encontre seus parceiros de jornada</h2>
+            <p>Conheça participantes e encontre pessoas para criar projetos.</p>
+        </div>
+
+        <span class="participants-count">128 PARTICIPANTES</span>
+    </div>
+
+    <div class="participants-list">
+
+        <article class="participant-card">
+            <span class="avatar avatar-orange">NR</span>
+            <div class="participant-info">
+                <strong>Nina Rocha</strong>
+                <span>Godot · Gameplay</span>
+                <small>Disponível para equipes</small>
+            </div>
+        </article>
+
+        <article class="participant-card">
+            <span class="avatar avatar-blue">CM</span>
+            <div class="participant-info">
+                <strong>Caio Martins</strong>
+                <span>Unity · Programação</span>
+                <small>Procurando equipe</small>
+            </div>
+        </article>
+
+        <article class="participant-card">
+            <span class="avatar avatar-pink">BT</span>
+            <div class="participant-info">
+                <strong>Bia Tavares</strong>
+                <span>Narrativa · UX</span>
+                <small>Disponível para equipes</small>
+            </div>
+        </article>
+
+    </div>
+
+    <button class="primary-button" id="find-connections">
+        ENCONTRAR CONEXÕES →
+    </button>
+
+</section>
+
+<!-- MATERIAIS RECOMENDADOS -->
+<section class="materials-panel">
+
+    <div class="panel-heading">
+        <div>
+            <span class="eyebrow">APRENDA E EVOLUA</span>
+            <h2>Materiais recomendados</h2>
+            <p>Conteúdos para ajudar você a desenvolver seu próximo projeto.</p>
+        </div>
+
+        <span class="materials-label">SELEÇÃO LUDARYUM</span>
+    </div>
+
+    <div class="materials-list">
+
+        <article class="material-card">
+            <div class="material-icon">📚</div>
+            <span class="eyebrow">GUIA DE ESTUDO</span>
+            <h3>Construindo mundos Solarpunk</h3>
+            <p>Aprenda a criar universos que unem natureza, tecnologia e sociedade.</p>
+            <span class="material-type">LEITURA · 15 MIN</span>
+        </article>
+
+        <article class="material-card">
+            <div class="material-icon">🎨</div>
+            <span class="eyebrow">OFICINA CRIATIVA</span>
+            <h3>Design de cenários e ambientes</h3>
+            <p>Explore técnicas visuais para desenvolver cenários marcantes.</p>
+            <span class="material-type">WORKSHOP · 30 MIN</span>
+        </article>
+
+        <article class="material-card">
+            <div class="material-icon">💻</div>
+            <span class="eyebrow">RECURSO TÉCNICO</span>
+            <h3>Prototipagem de jogos</h3>
+            <p>Conheça práticas para transformar ideias em experiências jogáveis.</p>
+            <span class="material-type">TUTORIAL · 20 MIN</span>
+        </article>
+
+    </div>
+
+    <button class="primary-button" id="view-materials">
+        VER MATERIAL COMPLETO →
+    </button>
+
+</section>
+
+<!-- RODAPÉ DA LUDARYUM -->
+<footer>
+    <strong>LUDARYUM</strong>
+    <span>Feito para quem transforma ideias em aventuras.</span>
+    <span>© 2026 Ludaryum</span>
+</footer>
+    </main>
+
+    <!-- NOTIFICAÇÃO DE CONEXÕES -->
+<div class="connection-toast" id="connection-toast">
+    <div class="toast-icon">🎮</div>
+
+    <div class="toast-content">
+        <strong>Prepare-se para conectar!</strong>
+        <p>Em breve você poderá encontrar jogadores e formar sua equipe na Ludaryum.</p>
+    </div>
+
+    <button class="toast-close" id="close-connection-toast">×</button>
+</div>
+
+<!-- NOTIFICAÇÃO DE MATERIAIS -->
+<div class="materials-toast" id="materials-toast">
+    <div class="toast-icon">📚</div>
+
+    <div class="toast-content">
+        <strong>Novos conhecimentos aguardam!</strong>
+        <p>Em breve você poderá acessar guias, oficinas e tutoriais completos na Ludaryum.</p>
+    </div>
+
+    <button class="toast-close" id="close-materials-toast">×</button>
+</div>
+
+<script src="campanhas.js"></script>
+
+<!-- CONFIRMAÇÃO DE PARTICIPAÇÃO -->
+<div class="campaign-toast" id="campaign-toast">
+    <span>✦</span>
+    <div>
+        <strong>Inscrição confirmada!</strong>
+        <p>Você agora está participando desta campanha.</p>
+    </div>
+</div>
+
 </body>
 </html>

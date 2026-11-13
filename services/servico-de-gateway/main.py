@@ -1,15 +1,16 @@
 # Caminho: servico-de-gateway/main.py
+import os
+import httpx
+import websockets
+import asyncio
 from fastapi import FastAPI, Request, HTTPException, Header, Response, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
-import os
-import httpx
-import websockets
 
-app = FastAPI(title="Gateway de API - Ludarium", version="1.1.1")
+app = FastAPI(title="Gateway de API - Ludarium (Global & Sincronizado)", version="1.2.2")
 
-# Configuração de CORS para permitir requisições do Frontend
+# Configuração de CORS irrestrita para suporte multiplataforma e túneis
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -28,6 +29,7 @@ PATH_CAMPANHAS = os.path.join(ROOT_SERVICES_DIR, "servico-de-campanhas", "fronte
 PATH_COMUNIDADE = os.path.join(ROOT_SERVICES_DIR, "servico-de-comunidade", "frontend")
 PATH_PERFIL = os.path.join(ROOT_SERVICES_DIR, "servico-de-perfil", "frontend")
 PATH_ADMIN = os.path.join(ROOT_SERVICES_DIR, "admin-dashboard")
+PATH_CONFIGURACOES = os.path.abspath(os.path.join(ROOT_SERVICES_DIR, "configuracoes", "frontend"))
 
 # Montar os ficheiros estáticos de forma tolerante e segura
 if os.path.exists(PATH_HOME):
@@ -45,6 +47,9 @@ if os.path.exists(PATH_PERFIL):
 if os.path.exists(PATH_ADMIN):
     app.mount("/admin-ui", StaticFiles(directory=PATH_ADMIN), name="admin_ui")
 
+if os.path.exists(PATH_CONFIGURACOES):
+    app.mount("/configuracoes", StaticFiles(directory=PATH_CONFIGURACOES), name="configuracoes_ui")
+
 # Mapeamento com as portas reais dos microsserviços
 SERVICOS = {
     "auth": "http://localhost:8001",
@@ -52,6 +57,7 @@ SERVICOS = {
     "comunidade": "http://localhost:8002",
     "campanhas": "http://localhost:8003",
     "perfil": "http://localhost:8004",
+    "configuracoes": "http://localhost:8006",
     "gateway": "http://localhost:8005"
 }
 
@@ -64,13 +70,13 @@ async def shutdown_event():
 
 @app.get("/", response_class=HTMLResponse)
 def raiz():
-    """Página de Hub Central para a Apresentação e Testes Visuais"""
+    """Página de Hub Central para a Apresentação e Testes Visuais Globais"""
     return """
     <!DOCTYPE html>
     <html lang="pt">
     <head>
         <meta charset="UTF-8">
-        <title>Ludarium - Hub de Apresentação</title>
+        <title>Ludarium - Hub Global de Apresentação</title>
         <style>
             body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #0f172a; color: #f8fafc; padding: 40px; margin: 0; }
             .container { max-width: 850px; margin: 0 auto; background: #1e293b; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
@@ -86,36 +92,36 @@ def raiz():
     </head>
     <body>
         <div class="container">
-            <h1>🚀 Ecossistema Ludarium</h1>
-            <p class="subtitle">Gateway de API & Gestão de Interfaces para Apresentação</p>
+            <h1>🚀 Ecossistema Ludarium (Global)</h1>
+            <p class="subtitle">Gateway Centralizado & Sincronização Total de Dados</p>
             <div class="grid">
                 <a href="/home-ui/home.html" class="card">
                     <h3>🏠 Home / Projetos</h3>
-                    <p>Portefólio e ecrã principal do projeto.</p>
+                    <p>Portefólio e ecrã principal sincronizado.</p>
                 </a>
                 <a href="/home-ui/login.html" class="card">
                     <h3>🔑 Autenticação & Login</h3>
-                    <p>Ecrã de acesso e registo de utilizadores.</p>
+                    <p>Ecrã de acesso e sessão global unificada.</p>
                 </a>
                 <a href="/campanhas-ui/campanhas.html" class="card">
-                    <h3>🏆 Campanhas & XP</h3>
-                    <p>Desafios, objetivos e sistema de gamificação.</p>
+                    <h3>🏆 Campanhas, Prémios & XP</h3>
+                    <p>Desafios, gamificação e atribuição de XP.</p>
                 </a>
                 <a href="/comunidade-ui/community.html" class="card">
-                    <h3>💬 Comunidade & Fóruns</h3>
-                    <p>Feed social, publicações, fóruns e conversas.</p>
+                    <h3>💬 Comunidade, Chats & Avisos</h3>
+                    <p>Feed social, fóruns, avisos e chats em tempo real.</p>
                 </a>
                 <a href="/perfil-ui/perfil.html" class="card">
                     <h3>👤 Perfil do Utilizador</h3>
-                    <p>Estatísticas, nível, troféus e painel pessoal.</p>
+                    <p>Estatísticas, nível, troféus e dados globais.</p>
                 </a>
-                <a href="/docs" class="card" style="border-left-color: #f59e0b;">
-                    <h3>📚 Documentação Swagger</h3>
-                    <p>Testar rotas e endpoints backend diretamente.</p>
+                <a href="/configuracoes/configuracoes.html" class="card">
+                    <h3>⚙️ Configurações Globais</h3>
+                    <p>Preferências da conta refletidas em todo o projeto.</p>
                 </a>
             </div>
             <div class="footer">
-                Ludarium Backend &bull; Integrado via Cloudflare Tunnel para Apresentação Multidispositivos
+                Ludarium Backend &bull; Sincronização Global Ativa para Configurações, XP, Reações e Chats
             </div>
         </div>
     </body>
@@ -146,16 +152,20 @@ async def reencaminhar_pedido(servico_url: str, request: Request, path: str):
     except httpx.RequestError:
         raise HTTPException(status_code=503, detail="O microsserviço de destino encontra-se indisponível ou offline.")
 
-# --- Rota WebSocket para Chat em Tempo Real ---
-@app.websocket("/ws/chat/{chat_id}")
-async def gateway_websocket_chat(websocket: WebSocket, chat_id: int):
+# --- Rota WebSocket Global Otimizada e Corrigida para Todos os Chats ---
+@app.websocket("/ws/{path:path}")
+async def gateway_websocket_proxy(websocket: WebSocket, path: str):
     await websocket.accept()
-    backend_ws_url = SERVICOS["comunidade"].replace("http://", "ws://").replace("https://", "wss://")
-    target_url = f"{backend_ws_url}/ws/chat/{chat_id}"
-
+    
+    query_params = websocket.query_params
+    query_string = f"?{query_params}" if query_params else ""
+    
+    comunidade_ws_base = SERVICOS["comunidade"].replace("http://", "ws://").replace("https://", "wss://")
+    target_url = f"{comunidade_ws_base}/ws/{path}{query_string}"
+    
     try:
         async with websockets.connect(target_url) as backend_ws:
-            async def client_to_backend():
+            async def forward_client_to_backend():
                 try:
                     while True:
                         data = await websocket.receive_text()
@@ -163,18 +173,19 @@ async def gateway_websocket_chat(websocket: WebSocket, chat_id: int):
                 except Exception:
                     pass
 
-            async def backend_to_client():
+            async def forward_backend_to_client():
                 try:
                     async for message in backend_ws:
                         await websocket.send_text(message)
                 except Exception:
                     pass
 
-            import asyncio
-            await asyncio.gather(client_to_backend(), backend_to_client())
+            await asyncio.gather(forward_client_to_backend(), forward_backend_to_client())
+            
     except WebSocketDisconnect:
         pass
-    except Exception:
+    except Exception as e:
+        print(f"Erro no Proxy WebSocket do Gateway ({path}): {e}")
         try:
             await websocket.close()
         except Exception:
@@ -191,7 +202,7 @@ async def gateway_leaderboard(authorization: str = Header(None)):
     except httpx.ConnectError:
         return {"erro": "Serviço de Perfil inacessível na porta 8004"}, 503
 
-# --- Rotas de Autenticação ---
+# --- Rotas de Autenticação & Logins Globais ---
 @app.post("/login")
 async def gw_login(request: Request):
     return await reencaminhar_pedido(SERVICOS["auth"], request, "login")
@@ -200,11 +211,15 @@ async def gw_login(request: Request):
 async def gw_register(request: Request):
     return await reencaminhar_pedido(SERVICOS["auth"], request, "register")
 
+@app.post("/recover-password")
+async def gw_recover_password(request: Request):
+    return await reencaminhar_pedido(SERVICOS["auth"], request, "recover-password")
+
 @app.get("/me")
 async def gw_me(request: Request):
     return await reencaminhar_pedido(SERVICOS["auth"], request, "me")
 
-# --- Rotas de Utilizadores, Dossiê e Limpeza Forense (Encaminhadas para o Auth Service) ---
+# --- Rotas de Utilizadores, Dossiê e Limpeza Forense ---
 @app.get("/admin/dossie-completo")
 async def gw_admin_dossie(request: Request):
     return await reencaminhar_pedido(SERVICOS["auth"], request, "admin/dossie-completo")
@@ -246,7 +261,11 @@ async def gw_sandbox(request: Request, path: str):
 async def gw_posters(request: Request, path: str):
     return await reencaminhar_pedido(SERVICOS["projetos"], request, f"posters/{path}")
 
-# --- Rotas de Perfil ---
+@app.api_route("/sandbox_builds/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+async def gw_sandbox_builds(request: Request, path: str):
+    return await reencaminhar_pedido(SERVICOS["projetos"], request, f"sandbox_builds/{path}")
+
+# --- Rotas de Perfil, XP e Prémios ---
 @app.get("/perfil")
 async def gw_perfil_get(request: Request):
     return await reencaminhar_pedido(SERVICOS["perfil"], request, "perfil")
@@ -259,7 +278,16 @@ async def gw_perfil_put(request: Request):
 async def gw_perfil_sub(request: Request, path: str):
     return await reencaminhar_pedido(SERVICOS["perfil"], request, f"perfil/{path}")
 
-# --- Rotas de Comunidade ---
+# --- Rotas de Configurações Globais ---
+@app.api_route("/configuracoes/{path:path}", methods=["GET", "PUT", "POST", "DELETE", "PATCH"])
+async def gw_configuracoes_sub(request: Request, path: str):
+    return await reencaminhar_pedido(SERVICOS["configuracoes"], request, f"configuracoes/{path}")
+
+@app.api_route("/configuracoes", methods=["GET", "PUT", "POST", "PATCH"])
+async def gw_configuracoes_root(request: Request):
+    return await reencaminhar_pedido(SERVICOS["configuracoes"], request, "configuracoes")
+
+# --- Rotas de Comunidade, Reações, Comentários e Fóruns ---
 @app.get("/publicacoes")
 async def gw_publicacoes_get(request: Request):
     return await reencaminhar_pedido(SERVICOS["comunidade"], request, "publicacoes")
@@ -280,7 +308,7 @@ async def gw_candidatos_sub(request: Request, path: str):
 async def gw_candidaturas_sub(request: Request, path: str):
     return await reencaminhar_pedido(SERVICOS["comunidade"], request, f"candidaturas/{path}")
 
-@app.api_route("/comentarios/{path:path}", methods=["GET", "POST", "DELETE"])
+@app.api_route("/comentarios/{path:path}", methods=["GET", "POST", "DELETE", "PATCH"])
 async def gw_comentarios_sub(request: Request, path: str):
     return await reencaminhar_pedido(SERVICOS["comunidade"], request, f"comentarios/{path}")
 
@@ -292,7 +320,11 @@ async def gw_oportunidades(request: Request):
 async def gw_skills(request: Request):
     return await reencaminhar_pedido(SERVICOS["comunidade"], request, "recomendados/skills")
 
-@app.api_route("/messages/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+@app.api_route("/messages", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+async def gw_messages_root(request: Request):
+    return await reencaminhar_pedido(SERVICOS["comunidade"], request, "messages")
+
+@app.api_route("/messages/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
 async def gw_messages(request: Request, path: str):
     return await reencaminhar_pedido(SERVICOS["comunidade"], request, f"messages/{path}")
 
@@ -321,7 +353,7 @@ async def gw_admin_foruns(request: Request, path: str):
 async def gw_topicos(request: Request, path: str):
     return await reencaminhar_pedido(SERVICOS["comunidade"], request, f"topicos/{path}")
 
-# --- Rotas de Grupos Privados ---
+# --- Rotas de Grupos Privados e Chats de Equipa ---
 @app.get("/grupos")
 async def gw_grupos_get(request: Request):
     return await reencaminhar_pedido(SERVICOS["comunidade"], request, "grupos")
@@ -334,7 +366,7 @@ async def gw_grupos_post(request: Request):
 async def gw_grupos_sub(request: Request, path: str):
     return await reencaminhar_pedido(SERVICOS["comunidade"], request, f"grupos/{path}")
 
-# --- Rotas de Campanhas e Desafios ---
+# --- Rotas de Campanhas, Desafios, Prémios e XP ---
 @app.get("/progresso-usuario")
 async def gw_progresso(request: Request):
     return await reencaminhar_pedido(SERVICOS["campanhas"], request, "progresso-usuario")
@@ -347,11 +379,15 @@ async def gw_campanhas_get(request: Request):
 async def gw_campanhas_post(request: Request):
     return await reencaminhar_pedido(SERVICOS["campanhas"], request, "campanhas")
 
+@app.api_route("/campanhas/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+async def gw_campanhas_sub(request: Request, path: str):
+    return await reencaminhar_pedido(SERVICOS["campanhas"], request, f"campanhas/{path}")
+
 @app.api_route("/objetivos/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"])
 async def gw_objetivos(request: Request, path: str):
     return await reencaminhar_pedido(SERVICOS["campanhas"], request, f"objetivos/{path}")
 
-# --- Rotas de Notificações ---
+# --- Rotas de Notificações e Avisos ---
 @app.get("/notifications")
 async def gw_notifications_get(request: Request):
     return await reencaminhar_pedido(SERVICOS["comunidade"], request, "notifications")
@@ -363,3 +399,12 @@ async def gw_notifications_post(request: Request):
 @app.api_route("/notifications/{path:path}", methods=["GET", "POST", "PATCH", "DELETE"])
 async def gw_notifications_sub(request: Request, path: str):
     return await reencaminhar_pedido(SERVICOS["comunidade"], request, f"notifications/{path}")
+
+# --- Rotas de Administração e Verificação de Permissões ---
+@app.get("/auth/verificar-admin")
+async def gw_verificar_admin(request: Request):
+    return await reencaminhar_pedido(SERVICOS["auth"], request, "auth/verificar-admin")
+
+@app.api_route("/admin/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+async def gw_admin_sub(request: Request, path: str):
+    return await reencaminhar_pedido(SERVICOS["auth"], request, f"admin/{path}")

@@ -4,16 +4,22 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 class UserCreate(BaseModel):
+    nome_completo: Optional[str] = None
     username: str
     email: EmailStr
     password: str
-    analytics_opt_in: Optional[bool] = False  # Novo campo LGPD Opt-In
+    analytics_opt_in: Optional[bool] = False  # LGPD Opt-In
+    provider: Optional[str] = "local"         # 'local', 'google', 'github'
 
 class UserResponse(BaseModel):
     id: int
+    nome_completo: Optional[str] = None
     username: str
     email: str
     status: Optional[str] = "Ativo (BD)"
+    provider: Optional[str] = "local"
+    created_at: Optional[datetime] = None
+    last_login: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -35,8 +41,8 @@ class AuditLogResponse(BaseModel):
     navegador: Optional[str] = None
     localizacao: Optional[str] = None
     acao: Optional[str] = None
-    severidade: Optional[str] = "BAIXA"          # Adicionado para suportar análise de ameaças
-    detalhes_payload: Optional[str] = None     # Adicionado para registar payloads suspeitos
+    severidade: Optional[str] = "BAIXA"          # Suporte a análise de ameaças
+    detalhes_payload: Optional[str] = None     # Registo de payloads suspeitos
     timestamp: datetime
 
     class Config:

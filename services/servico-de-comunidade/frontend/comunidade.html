@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Comunidade | Ludaryum</title>
+    
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+
+    <link rel="stylesheet" href="comunidade.css">
+</head>
+
+<body>
+
+    <header class="navbar">
+        
+<a href="/home-ui/home.html" class="logo">
+    <span class="brand-moon" aria-hidden="true"></span>
+    <span class="logo-sign">LUDARYUM</span>
+</a>
+
+
+        <nav class="nav-links">
+    <a href="/home-ui/home.html">Explorar</a>
+    <a href="/comunidade-ui/comunidade.html">Comunidade</a>
+    <a href="/campanhas-ui/campanhas.html">Campanhas</a>
+</nav>
+
+        <div class="nav-search">
+            <span>⌕</span>
+            <input
+                type="search"
+                placeholder="Buscar discussões, pessoas ou habilidades..."
+                aria-label="Buscar na comunidade"
+            >
+        </div>
+
+        <button class="btn-publicar" type="button">
+    + Publicar
+</button>
+
+<div class="nav-acoes">
+
+    <!-- Alternar tema -->
+    <button
+        type="button"
+        class="nav-icone"
+        id="alternar-tema"
+        aria-label="Alternar tema"
+        title="Alternar tema"
+    >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
+        </svg>
+    </button>
+
+    <!-- Notificações -->
+    <button
+        type="button"
+        class="nav-icone"
+        id="abrir-notificacoes"
+        aria-label="Abrir notificações"
+        title="Notificações"
+    >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path>
+            <path d="M10 21h4"></path>
+        </svg>
+        <span class="notificacao-indicador" id="notificacao-indicador"></span>
+    </button>
+
+    <!-- Painel de notificações -->
+<div class="painel-notificacoes" id="painel-notificacoes">
+    <div class="notificacoes-cabecalho">
+        <h3>Notificações</h3>
+        <button type="button" id="fechar-notificacoes" aria-label="Fechar notificações">×</button>
+    </div>
+
+    <div class="lista-notificacoes" id="lista-notificacoes">
+        <p class="notificacoes-vazio">
+            Você ainda não tem notificações.
+        </p>
+    </div>
+</div>
+
+</div>
+
+
+<div class="perfil-container">
+    <button
+        class="avatar"
+        type="button"
+        id="botao-perfil"
+        aria-label="Abrir menu do perfil"
+        aria-expanded="false"
+    >
+        <span id="iniciais-perfil-menu">LM</span>
+    </button>
+
+    <div class="menu-perfil" id="menu-perfil" hidden>
+        <div class="perfil-menu-cabecalho">
+            <div class="perfil-menu-avatar" id="avatar-menu-perfil">LM</div>
+
+            <div class="perfil-menu-info">
+                <strong class="perfil-menu-nome" id="nome-menu-perfil">Lia Monteiro</strong>
+                <span>Nível 24 · 3.420 XP</span>
+            </div>
+
+            <span class="perfil-status" title="Online"></span>
+        </div>
+
+        <a href="/perfil-ui/perfil.html" class="perfil-menu-opcao">
+            <span class="perfil-menu-icone" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="1.8"
+         stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="8" r="4"></circle>
+        <path d="M4 21v-2a8 8 0 0 1 16 0v2"></path>
+    </svg>
+</span>
+            <span>VER MEU PERFIL</span>
+        </a>
+
+        <a href="/configuracoes/configuracoes.html" class="perfil-menu-opcao">
+            <span class="perfil-menu-icone" aria-hidden="true">
+    <svg xmlns="http://www.w3.org/2000/svg"
+         width="24"
+         height="24"
+         viewBox="0 0 24 24"
+         fill="none"
+         stroke="currentColor"
+         stroke-width="2"
+         stroke-linecap="round"
+         stroke-linejoin="round">
+        <path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/>
+        <circle cx="12" cy="12" r="3"/>
+    </svg>
+</span>
+            <span>CONFIGURAÇÕES</span>
+        </a>
+
+        <div class="perfil-menu-divisor"></div>
+
+        <button type="button" id="desconectar" class="perfil-menu-sair">
+            <span>⇥</span>
+            <span>SAIR DA LUDARYUM</span>
+        </button>
+    </div>
+</div>
+    </header>
+
+    <main class="comunidade-layout">
+
+        
+<aside class="sidebar-esquerda">
+
+    <!-- Comunidades do usuário -->
+    <section class="painel">
+        <div class="painel-titulo">
+            <h2>Suas comunidades</h2>
+        </div>
+
+        <div id="lista-comunidades">
+            <p class="mensagem-pessoas">
+                Suas comunidades aparecerão aqui.
+            </p>
+        </div>
+
+        <button class="btn-grupos" type="button">
+            + Descobrir grupos
+        </button>
+
+        
+<div class="modal-grupos" id="modal-grupos" hidden>
+    <div class="modal-grupos-conteudo">
+
+        <button
+            type="button"
+            class="modal-fechar"
+            id="fechar-modal-grupos"
+            aria-label="Fechar janela"
+        >×</button>
+
+        <span class="etiqueta">ENCONTRE SUA GALERA</span>
+
+        <h2>Descobrir comunidades</h2>
+
+        
+<div class="pesquisa-grupos">
+    <input
+        type="search"
+        id="pesquisar-grupos"
+        placeholder="Buscar uma comunidade..."
+        aria-label="Buscar comunidades"
+    >
+</div>
+
+
+        <p>
+            Explore comunidades de desenvolvimento de jogos
+            e encontre pessoas com interesses parecidos com os seus.
+        </p>
+
+        <div class="lista-grupos-disponiveis">
+
+            <article class="grupo-disponivel">
+                <span class="grupo-icone verde">BR</span>
+                <div>
+                    <strong>Dev Indie Brasil</strong>
+                    <small>Desenvolvimento de jogos independentes</small>
+                </div>
+            </article>
+
+            <article class="grupo-disponivel">
+                <span class="grupo-icone azul">GD</span>
+                <div>
+                    <strong>Godot em Português</strong>
+                    <small>Criação de jogos com Godot</small>
+                </div>
+            </article>
+
+            <article class="grupo-disponivel">
+                <span class="grupo-icone roxo">NA</span>
+                <div>
+                    <strong>Narrativas Interativas</strong>
+                    <small>Histórias, roteiros e escolhas</small>
+                </div>
+            </article>
+
+            <article class="grupo-disponivel">
+                <span class="grupo-icone laranja">PX</span>
+                <div>
+                    <strong>Pixel Art Club</strong>
+                    <small>Arte em pixels e animação</small>
+                </div>
+            </article>
+
+        </div>
+
+        <p class="aviso-grupos">
+            A participação nas comunidades será conectada ao sistema futuramente.
+        </p>
+
+    </div>
+</div>
+
+    </section>
+
+    <!-- SECÇÃO DE FÓRUNS INTEGRADA COM CRIAÇÃO E DENÚNCIA -->
+    <section class="painel">
+        <div class="painel-titulo" style="display: flex; justify-content: space-between; align-items: center;">
+            <h2>💬 Fóruns</h2>
+            <button type="button" id="btn-abrir-modal-forum" class="btn-secundario" style="padding: 4px 8px; font-size: 11px; cursor: pointer;">+ Criar</button>
+        </div>
+        <div id="lista-foruns-comunidade">
+            <p class="mensagem-pessoas">Carregando fóruns...</p>
+        </div>
+    </section>
+
+    <!-- Tópicos em alta -->
+    <section class="painel">
+        <h2>Tópicos em alta</h2>
+
+        <div id="lista-topicos">
+            <p class="mensagem-pessoas">
+                Carregando tópicos...
+            </p>
+        </div>
+    </section>
+
+</aside>
+
+
+        <section class="feed-comunidade">
+
+            
+<div class="feed-cabecalho">
+    <div>
+        <span class="etiqueta">SUA COMUNIDADE, SUAS IDEIAS</span>
+        <h1>Conversas da comunidade</h1>
+    </div>
+
+    <select id="ordenar-publicacoes" aria-label="Ordenar publicações">
+        <option value="recentes">Mais recentes</option>
+        <option value="populares">Mais populares</option>
+    </select>
+</div>
+
+<!-- BARRA DE CATEGORIAS -->
+<nav class="barra-categorias" aria-label="Categorias da comunidade">
+
+    <button type="button" class="categoria-feed ativa" data-categoria="todas">
+        Para você
+    </button>
+
+    <button type="button" class="categoria-feed" data-categoria="Discussão">
+        Discussão
+    </button>
+
+    <button type="button" class="categoria-feed" data-categoria="Projeto">
+        Meu projeto
+    </button>
+
+    <button type="button" class="categoria-feed" data-categoria="Procurando equipe">
+        Procurando equipe
+    </button>
+
+    <button type="button" class="categoria-feed" data-categoria="Dúvida">
+        Dúvida
+    </button>
+
+    <button type="button" class="categoria-feed" data-categoria="Game Jam">
+        Game Jam
+    </button>
+
+</nav>
+
+<div id="lista-publicacoes"></div>
+
+
+</section>
+
+        <aside class="sidebar-direita">
+
+            <!-- SECÇÃO DE CHATS E GRUPOS INTEGRADA -->
+            <section class="painel">
+                <div class="painel-titulo" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <div>
+                        <span class="etiqueta" style="display: block; margin-bottom: 2px;">TEMPO REAL</span>
+                        <h2 style="margin: 0;">Meus Chats</h2>
+                    </div>
+                    <button type="button" id="btn-abrir-modal-grupo" class="btn-secundario" style="padding: 4px 8px; font-size: 11px; cursor: pointer; background: rgba(215, 123, 244, 0.1); border: 1px solid rgba(215, 123, 244, 0.3); color: #d77bf4; border-radius: 6px;">+ Novo Chat</button>
+                </div>
+                <div id="lista-chats-ativos">
+                    <p class="mensagem-pessoas">Carregando chats...</p>
+                </div>
+            </section>
+
+            <!-- NOVA ÁREA ISOLADA PARA CHATS DE CANDIDATURA E CRIAÇÃO DE GRUPOS -->
+            <section class="painel chats-candidatura-painel">
+                <div class="painel-titulo">
+                    <h2>🚀 Chats de Candidatura</h2>
+                    <span class="etiqueta">Projetos</span>
+                </div>
+                <div id="lista-chats-candidatura" style="display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto;">
+                    <p class="mensagem-pessoas" style="color: #94899d; font-size: 11px;">Carregando chats de candidatura...</p>
+                </div>
+            </section>
+
+            
+<section class="painel">
+    <span class="etiqueta">AFINIDADE DE SKILLS</span>
+    <h2>Pessoas para conhecer</h2>
+
+    <div id="lista-pessoas">
+        <p class="mensagem-pessoas">
+            Carregando pessoas da comunidade...
+        </p>
+    </div>
+
+    <a href="#pessoas" class="ver-mais" id="ver-mais-pessoas">
+        VER MAIS PESSOAS
+    </a>
+</section>
+
+<section class="painel oportunidades">
+    <span class="etiqueta">COLABORE AGORA</span>
+    <h2>Oportunidades abertas</h2>
+
+    <div class="oportunidade">
+        <strong>Artista 2D para game jam</strong>
+        <small>Remoto · 10 dias</small>
+
+        <div class="tags">
+            <span>PIXEL ART</span>
+            <span>GODOT</span>
+        </div>
+
+        <small>♧ 3 pessoas interessadas</small>
+    </div>
+
+    <div class="oportunidade">
+        <strong>Testadores para demo narrativa</strong>
+        <small>Flexível · Voluntário</small>
+
+        <div class="tags">
+            <span>FEEDBACK</span>
+            <span>PC</span>
+        </div>
+
+        <small>♧ 8 pessoas interessadas</small>
+    </div>
+</section>
+
+
+        </aside>
+
+    
+    </main>
+
+    <!-- Janela para criar uma publicação -->
+    <div class="modal-publicacao" id="modal-publicacao">
+        <div class="modal-conteudo">
+
+            <button
+                class="modal-fechar"
+                id="fechar-modal"
+                type="button"
+                aria-label="Fechar janela"
+            >×</button>
+
+            <span class="etiqueta">SUA VOZ NA COMUNIDADE</span>
+
+            <h2>Criar publicação</h2>
+
+            <p class="modal-descricao">
+                Compartilhe uma ideia, mostre seu projeto ou encontre colaboradores.
+            </p>
+
+            <form id="form-publicacao">
+
+                <label for="titulo-publicacao">Título da publicação</label>
+                <input
+                    type="text"
+                    id="titulo-publicacao"
+                    placeholder="Sobre o que você quer conversar?"
+                    required
+                >
+
+                <label for="categoria-publicacao">Categoria</label>
+                <select id="categoria-publicacao" required>
+                    <option value="">Escolha uma categoria</option>
+                    <option value="Discussão">Discussão</option>
+                    <option value="Projeto">Meu projeto</option>
+                    <option value="Procurando equipe">Procurando equipe</option>
+                    <option value="Dúvida">Dúvida</option>
+                    <option value="Game Jam">Game Jam</option>
+                </select>
+
+                <label for="comunidade-publicacao">Comunidade</label>
+
+<select id="comunidade-publicacao" required>
+    <option value="">Escolha uma comunidade</option>
+    <option value="Dev Indie Brasil">Dev Indie Brasil</option>
+    <option value="Godot em Português">Godot em Português</option>
+    <option value="Narrativas Interativas">Narrativas Interativas</option>
+    <option value="Pixel Art Club">Pixel Art Club</option>
+</select>
+
+                <label for="texto-publicacao">Descrição</label>
+                <textarea
+                    id="texto-publicacao"
+                    rows="5"
+                    placeholder="Conte sua ideia para a comunidade..."
+                    required
+                ></textarea>
+
+                
+<!-- Opções de participação na publicação -->
+<div class="opcoes-participacao">
+    <label class="participacao-titulo">
+        Participação na publicação
+    </label>
+
+    <label class="participacao-opcao">
+        <input
+            type="checkbox"
+            id="aceitar-participantes"
+            name="aceitar-participantes"
+        >
+        <span>
+            <strong>Aceitar interessados</strong>
+            <small>Permitir que outras pessoas demonstrem interesse nesta publicação.</small>
+        </span>
+    </label>
+
+    <div id="modalidades-participacao" hidden>
+        <p>Quais formas de participação você aceita?</p>
+
+        <label class="participacao-opcao">
+            <input
+                type="checkbox"
+                id="participacao-individual"
+                name="modalidade-participacao"
+                value="individual"
+                checked
+            >
+            <span>
+                <strong>Quero participar</strong>
+                <small>Pessoas interessadas em participar individualmente.</small>
+            </span>
+        </label>
+
+        <label class="participacao-opcao">
+            <input
+                type="checkbox"
+                id="participacao-equipe"
+                name="modalidade-participacao"
+                value="equipe"
+                checked
+            >
+            <span>
+                <strong>Participar em equipe</strong>
+                <small>Pessoas interessadas em colaborar em equipe.</small>
+            </span>
+        </label>
+    </div>
+</div>
+
+
+                
+
+<div class="campo-imagem">
+    <label for="imagem-publicacao" class="titulo-imagem">
+        <span>Imagem de capa</span>
+        <span class="imagem-opcional">OPCIONAL</span>
+    </label>
+
+    <label for="imagem-publicacao" class="area-upload">
+        <span class="icone-upload">＋</span>
+        <span class="texto-upload">
+            <strong>Escolha uma imagem para sua publicação</strong>
+            <small>Clique aqui para selecionar um arquivo do seu computador</small>
+            <small class="formatos-imagem">PNG, JPG ou WEBP</small>
+        </span>
+    </label>
+
+    <input
+        type="file"
+        id="imagem-publicacao"
+        accept="image/png, image/jpeg, image/webp"
+    >
+
+    <img
+        id="preview-imagem"
+        class="preview-imagem"
+        alt="Prévia da imagem selecionada"
+    >
+</div>
+
+
+
+                <button class="btn-publicar-modal" type="submit">
+                    Publicar na comunidade
+                </button>
+
+            </form>
+
+        </div>
+    </div>
+
+    <!-- MODAL CRIAR FÓRUM -->
+    <div class="modal-publicacao" id="modal-forum" hidden>
+        <div class="modal-conteudo">
+            <button class="modal-fechar" id="fechar-modal-forum" type="button">×</button>
+            <span class="etiqueta">NOVO ESPAÇO DE DEBATE</span>
+            <h2>Criar Fórum</h2>
+            <form id="form-criar-forum">
+                <label for="titulo-forum">Título do Fórum</label>
+                <input type="text" id="titulo-forum" placeholder="Ex: Unreal Engine Avançado" required>
+                
+                <label for="categoria-forum">Categoria</label>
+                <input type="text" id="categoria-forum" placeholder="Ex: Programação" required>
+
+                <label for="descricao-forum">Descrição</label>
+                <textarea id="descricao-forum" rows="3" placeholder="Sobre o que será este fórum?" required></textarea>
+
+                <button class="btn-publicar-modal" type="submit">Criar Fórum</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL CRIAR NOVO CHAT / GRUPO -->
+    <div class="modal-publicacao" id="modal-grupo-privado" hidden>
+        <div class="modal-conteudo">
+            <button class="modal-fechar" id="fechar-modal-grupo" type="button">×</button>
+            <span class="etiqueta">COMUNICAÇÃO DIRETA</span>
+            <h2>Criar Novo Chat ou Grupo</h2>
+            <form id="form-criar-grupo-privado">
+                <label for="nome-novo-grupo">Nome do Grupo / Assunto</label>
+                <input type="text" id="nome-novo-grupo" placeholder="Ex: Equipe de Game Jam" required>
+
+                <label for="descricao-novo-grupo">Descrição (Opcional)</label>
+                <input type="text" id="descricao-novo-grupo" placeholder="Breve resumo do grupo...">
+
+                <label for="membros-novo-grupo">Adicionar @usernames (separados por vírgula)</label>
+                <input type="text" id="membros-novo-grupo" placeholder="user2, user3...">
+
+                <button class="btn-publicar-modal" type="submit">Criar Chat</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL DE DENÚNCIA DE FÓRUM INTEGRADO (VISUAL MELHORADO) -->
+    <div class="modal-publicacao" id="modal-denuncia-forum" hidden style="display: none; align-items: center; justify-content: center; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 9999; backdrop-filter: blur(4px);">
+        <div class="modal-conteudo" style="background: #1a1520; border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 16px; padding: 30px; width: 100%; max-width: 480px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); position: relative; color: #f8fafc;">
+            
+            <button class="modal-fechar" id="fechar-modal-denuncia" type="button" style="position: absolute; top: 20px; right: 20px; background: rgba(255,255,255,0.05); border: none; color: #fff; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 16px;">×</button>
+            
+            <span class="etiqueta" style="color: #ef4444; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; background: rgba(239,68,68,0.1); padding: 4px 8px; border-radius: 4px; display: inline-block; margin-bottom: 12px;">🚨 REPORTAR CONTEÚDO</span>
+            
+            <h2 id="titulo-denuncia-modal" style="font-size: 20px; font-weight: 700; margin: 0 0 8px 0; color: #fff; line-height: 1.3;">Denunciar Fórum</h2>
+            <p class="modal-descricao" style="color: #94899d; font-size: 13px; margin-bottom: 20px; line-height: 1.4;">Ajude-nos a manter a Ludarium segura. Descreva o motivo da infração:</p>
+            
+            <form id="form-denuncia-forum" style="display: flex; flex-direction: column; gap: 16px;">
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <label for="motivo-denuncia-texto" style="font-size: 12px; font-weight: 600; color: #d77bf4;">Motivo da Denúncia *</label>
+                    <textarea id="motivo-denuncia-texto" rows="4" placeholder="Descreva o motivo (ex: Conteúdo ofensivo, spam, plágio...)" required style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: #fff; padding: 12px; border-radius: 10px; font-size: 13px; outline: none; resize: none; font-family: inherit; width: 100%; box-sizing: border-box;"></textarea>
+                </div>
+                
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <label for="arquivo-evidencia-denuncia" style="font-size: 12px; font-weight: 600; color: #d77bf4;">Anexar Evidência (Print em imagem - Opcional)</label>
+                    <input type="file" id="arquivo-evidencia-denuncia" accept="image/*" style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: #94899d; padding: 10px; border-radius: 10px; font-size: 12px; width: 100%; box-sizing: border-box; cursor: pointer;">
+                </div>
+
+                <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 10px;">
+                    <button type="button" id="btn-cancelar-denuncia" class="btn-secundario" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #b9adbf; padding: 10px 18px; border-radius: 8px; font-size: 13px; cursor: pointer; font-weight: 600;">Cancelar</button>
+                    <button type="submit" style="background: #ef4444; border: none; color: #fff; font-weight: 600; padding: 10px 20px; border-radius: 8px; font-size: 13px; cursor: pointer; transition: background 0.2s;">Enviar Denúncia</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    
+<!-- Janela personalizada de confirmação -->
+<div class="modal-confirmacao" id="modal-confirmacao">
+    <div class="confirmacao-conteudo">
+        <div class="confirmacao-icone">!</div>
+
+        <h2>Excluir publicação?</h2>
+
+        <p>
+            Tem certeza de que deseja excluir esta publicação?
+            Essa ação não poderá ser desfeita.
+        </p>
+
+        <div class="confirmacao-botoes">
+            <button type="button" id="cancelar-exclusao">
+                Não, cancelar
+            </button>
+
+            <button type="button" id="confirmar-exclusao">
+                Sim, excluir
+            </button>
+        </div>
+    </div>
+</div>
+
+
+<!-- Janela de publicação criada com sucesso -->
+<div class="modal-sucesso" id="modal-sucesso" hidden>
+    <div class="modal-sucesso-conteudo">
+
+        <div class="sucesso-icone">✓</div>
+
+        <span class="etiqueta">MISSÃO CONCLUÍDA</span>
+
+        <h2>Publicação criada!</h2>
+
+        <p>
+            Sua ideia já foi adicionada à comunidade.
+            Continue compartilhando e colaborando com outros criadores!
+        </p>
+
+        <button type="button" id="fechar-modal-sucesso">
+            CONTINUAR
+        </button>
+
+    </div>
+</div>
+
+
+
+    <script src="comunidade.js"></script>
+
+</body>
+</html>

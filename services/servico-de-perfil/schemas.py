@@ -13,6 +13,7 @@ class PerfilUpdate(BaseModel):
     arroba: Optional[str] = None
     localizacao: Optional[str] = None
     biografia: Optional[str] = None
+    foto: Optional[str] = None  # 👈 Adicionado para aceitar a atualização da foto de perfil
     badge_funcao: Optional[str] = None
     links: Optional[List[LinkUpdateSchema]] = None
 
@@ -73,6 +74,7 @@ class PerfilCompletoResponse(BaseModel):
     arroba: Optional[str] = ""
     localizacao: Optional[str] = ""
     biografia: Optional[str] = ""
+    foto: Optional[str] = ""  # 👈 Adicionado para retornar a URL/Base64 da foto de perfil
     badge_funcao: Optional[str] = "NOVO MEMBRO"
     nivel: int
     xp_atual: int

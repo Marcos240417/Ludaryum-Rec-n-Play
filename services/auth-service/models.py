@@ -8,11 +8,15 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
+    nome_completo = Column(String, nullable=True)
     username = Column(String, unique=True, index=True)
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
     status = Column(String, default="Ativo (BD)")
     suspended_until = Column(DateTime, nullable=True)
+    provider = Column(String, default="local") # 'local', 'google', 'github'
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    last_login = Column(DateTime, nullable=True)
 
     # Relações
     audit_logs = relationship("AuditLog", back_populates="user", cascade="all, delete-orphan")

@@ -1,157 +1,350 @@
 <!DOCTYPE html>
-<html lang="pt">
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Perfil do Utilizador - Ludaryum</title>
+
+    <title>Meu Perfil | Ludaryum</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+
     <link rel="stylesheet" href="perfil.css">
-    <style>
-        /* Estilo estrito para ocultar elementos exclusivos de admin por padrão */
-        .admin-only {
-            display: none !important;
-        }
-    </style>
 </head>
-<body onload="verificarSessaoPerfil()">
-    <header class="navbar main-navbar">
-        <div class="nav-container" style="display: flex; justify-content: space-between; align-items: center; width: 100%; max-width: 1200px; margin: 0 auto;">
-            <div class="logo nav-brand">🎮 Ludarium Hub</div>
-            <ul class="nav-links">
-                <li><a href="/home-ui/home.html">Projetos</a></li>
-                <li><a href="/comunidade-ui/community.html">Comunidade</a></li>
-                <li><a href="/campanhas-ui/campanhas.html">Campanhas</a></li>
-                <li><a href="/perfil-ui/perfil.html" class="active">Perfil</a></li>
-                <li id="admin-menu-item" class="admin-only">
-                    <a href="/admin-ui/admin.html" style="color: #f59e0b; font-weight: bold;">⚙️ Painel Admin</a>
-                </li>
-            </ul>
+
+<body>
+    <main class="pagina">
+        <a href="/home-ui/home.html" class="voltar">← Voltar para Explorar</a>
+
+        <h1 class="titulo">Meu perfil</h1>
+
+        <section class="cartao">
+
+    <div class="capa-perfil">
+        <div class="conteudo-capa">
+            <span class="etiqueta-capa">LUDARYUM COMMUNITY</span>
+            <h2>Sua jornada começa aqui.</h2>
+            <p>Crie. Compartilhe. Evolua.</p>
         </div>
-    </header>
+    </div>
 
-    <main class="profile-container">
-        <!-- Cabeçalho do Perfil -->
-        <section class="profile-header">
-            <div class="profile-info">
-                <h1 id="profile-name">Carregando...</h1>
-                <p id="profile-arroba">@...</p>
-                <p id="profile-location">📍 ...</p>
-                <p id="profile-bio" class="bio">...</p>
-                <div id="profile-links" class="links-list"></div>
+    <div class="cabecalho-perfil">
+                <div class="avatar" id="avatar-perfil">LM</div>
 
-                <!-- Botões de Ação: Editar e Eliminar Perfil -->
-                <div style="margin-top: 1.2rem;">
-                    <button onclick="toggleEditForm()" style="background: #38bdf8; color: #0f172a; border: none; padding: 0.5rem 1rem; border-radius: 4px; font-weight: bold; cursor: pointer;">✏️ Editar Perfil</button>
-                    <button onclick="deletarPerfil()" style="background: #ef4444; color: #fff; border: none; padding: 0.5rem 1rem; border-radius: 4px; font-weight: bold; cursor: pointer; margin-left: 0.5rem;">🗑️ Eliminar Perfil</button>
-                </div>
+                <input
+    type="file"
+    id="campo-foto-perfil"
+    accept="image/*"
+    hidden
+>
 
-                <!-- Formulário de Edição Oculto Inicialmente -->
-                <div id="edit-form-container" style="display: none; margin-top: 1.5rem; background: #0f172a; padding: 1rem; border-radius: 8px; border: 1px solid #334155;">
-                    <h3 style="margin-top: 0; color: #38bdf8;">Atualizar Perfil</h3>
-                    <form id="update-form">
-                        <label style="display:block; margin-bottom:0.3rem; font-size:0.85rem; color:#94a3b8;">Nome:</label>
-                        <input type="text" id="input-nome" style="width:100%; padding:0.5rem; margin-bottom:0.8rem; background:#1e293b; border:1px solid #334155; color:#fff; border-radius:4px;">
-                        
-                        <label style="display:block; margin-bottom:0.3rem; font-size:0.85rem; color:#94a3b8;">Arroba:</label>
-                        <input type="text" id="input-arroba" style="width:100%; padding:0.5rem; margin-bottom:0.8rem; background:#1e293b; border:1px solid #334155; color:#fff; border-radius:4px;">
 
-                        <label style="display:block; margin-bottom:0.3rem; font-size:0.85rem; color:#94a3b8;">Localização:</label>
-                        <input type="text" id="input-localizacao" style="width:100%; padding:0.5rem; margin-bottom:0.8rem; background:#1e293b; border:1px solid #334155; color:#fff; border-radius:4px;">
+<div class="botoes-foto">
+    <button type="button" id="botao-foto-perfil" class="botao-foto-perfil">
+        📷 Alterar foto
+    </button>
 
-                        <label style="display:block; margin-bottom:0.3rem; font-size:0.85rem; color:#94a3b8;">Biografia:</label>
-                        <textarea id="input-biografia" rows="3" style="width:100%; padding:0.5rem; margin-bottom:0.8rem; background:#1e293b; border:1px solid #334155; color:#fff; border-radius:4px; resize: none;"></textarea>
+    <button type="button" id="botao-excluir-foto" class="botao-excluir-foto">
+        🗑️ Excluir foto
+    </button>
+</div>
 
-                        <label style="display:block; margin-bottom:0.3rem; font-size:0.85rem; color:#94a3b8;">Link 1 (Ex: GitHub URL):</label>
-                        <input type="text" id="input-link1-url" style="width:100%; padding:0.5rem; margin-bottom:0.8rem; background:#1e293b; border:1px solid #334155; color:#fff; border-radius:4px;">
 
-                        <label style="display:block; margin-bottom:0.3rem; font-size:0.85rem; color:#94a3b8;">Link 2 (Ex: LinkedIn URL):</label>
-                        <input type="text" id="input-link2-url" style="width:100%; padding:0.5rem; margin-bottom:0.8rem; background:#1e293b; border:1px solid #334155; color:#fff; border-radius:4px;">
+                <div>
+                    <h2 class="nome" id="nome-perfil">Lia Monteiro</h2>
+                    <p class="usuario" id="usuario-perfil">@liamonteiro</p>
+                    <p class="email-perfil" id="email-perfil" style="color: var(--muted, #9ca3af); font-size: 13px; margin-top: 2px;"></p>
+                    <p class="localizacao-perfil" id="localizacao-perfil" style="color: var(--purple-light, #a855f7); font-size: 13px; margin-top: 2px;"></p>
 
-                        <label style="display:block; margin-bottom:0.3rem; font-size:0.85rem; color:#94a3b8;">Link 3 (Ex: Website URL):</label>
-                        <input type="text" id="input-link3-url" style="width:100%; padding:0.5rem; margin-bottom:0.8rem; background:#1e293b; border:1px solid #334155; color:#fff; border-radius:4px;">
-
-                        <button type="submit" style="background: #22c55e; color: #fff; border: none; padding: 0.5rem 1rem; border-radius: 4px; font-weight: bold; cursor: pointer;">Guardar Alterações</button>
-                        <button type="button" onclick="toggleEditForm()" style="background: #64748b; color: #fff; border: none; padding: 0.5rem 1rem; border-radius: 4px; font-weight: bold; cursor: pointer; margin-left: 0.5rem;">Cancelar</button>
-                    </form>
-                </div>
-            </div>
-
-            <div class="profile-stats-card">
-                <span id="badge-funcao" class="badge">NOVO MEMBRO</span>
-                <h3>Nível <span id="profile-level">1</span></h3>
-                <p>XP: <span id="profile-xp">0</span> / <span id="profile-xp-next">1000</span></p>
-                <div class="stats-grid">
-                    <div><strong id="stat-seguidores">0</strong> Seguidores</div>
-                    <div><strong id="stat-seguindo">0</strong> Seguindo</div>
-                    <div><strong id="stat-projetos">0</strong> Projetos</div>
-                    <div><strong id="stat-contribuicoes">0</strong> Contribuições</div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Secções Dinâmicas -->
-        <div class="profile-grid">
-            <div class="column-left">
-                <section class="card">
-                    <h2>Comunidades</h2>
-                    <ul id="comunidades-list"></ul>
-                </section>
-                <section class="card">
-                    <h2>Sala de Troféus</h2>
-                    <div id="trofeus-list"></div>
-                </section>
-            </div>
-            <div class="column-right">
-                <section class="card">
-                    <h2>Projetos em Destaque</h2>
-                    <div id="projetos-destaque-list"></div>
-                </section>
-                <section class="card">
-                    <h2>Atividade Recente</h2>
-                    <div id="atividades-list"></div>
-                </section>
-
-                <!-- Placar de Líderes Global integrado no HTML -->
-                <section class="card" style="background: #1a1829; border: 1px solid #7c3aed; margin-top: 20px;">
-                    <h2 style="color: #d8b4fe;">🏆 Placar de Líderes (Top 10 XP)</h2>
-                    <div id="leaderboard-list">
-                        <p style="color: #9ca3af; font-size: 0.9rem;">A carregar ranking...</p>
+                    <div style="display: flex; gap: 10px; align-items: center; margin-top: 8px; flex-wrap: wrap;">
+                        <span class="badge-funcao" id="badge-funcao" style="padding: 3px 8px; background: rgba(147, 51, 234, 0.2); border: 1px solid #9333ea; border-radius: 6px; font-size: 10px; font-weight: 800; color: #c084fc;">NOVO MEMBRO</span>
+                        <button type="button" id="botao-editar-perfil">
+                            ✎ EDITAR PERFIL
+                        </button>
                     </div>
-                </section>
+
+                    <span class="nivel" id="nivel-topo-exibicao">✦ Nível 24 · 3.420 XP</span>
+                </div>
             </div>
+
+            <!-- CONTAINER DE LINKS SOCIAIS CLICÁVEIS (GitHub, LinkedIn, E-mail) -->
+            <div id="container-links-sociais" style="display: flex; gap: 10px; margin-bottom: 25px; flex-wrap: wrap;">
+                <!-- Preenchido via script -->
+            </div>
+
+            <div class="layout-perfil">
+    <div class="conteudo-principal">
+        
+<nav class="abas-perfil">
+    <button type="button" class="aba-perfil ativa" data-aba="visao-geral">Visão geral</button>
+    <button type="button" class="aba-perfil" data-aba="projetos">Projetos</button>
+    <button type="button" class="aba-perfil" data-aba="atividade">Atividade</button>
+    <button type="button" class="aba-perfil" data-aba="conquistas">Conquistas</button>
+</nav>
+
+
+        
+<section class="conteudo-aba ativa" id="visao-geral">
+    <h3 class="secao-titulo">Minha jornada</h3>
+
+    <div class="estatisticas">
+        <div class="estatistica">
+            <span>Projetos criados</span>
+            <strong id="total-projetos">0</strong>
         </div>
+
+        <div class="estatistica">
+            <span>Contribuições anuais</span>
+            <strong id="total-contribuicoes">0</strong>
+        </div>
+
+        <div class="estatistica">
+            <span>Conquistas</span>
+            <strong id="total-conquistas">0</strong>
+        </div>
+    </div>
+
+    <h3 class="secao-titulo">Projetos em destaque</h3>
+
+<div class="grade-projetos">
+
+    <article class="cartao-projeto">
+        <div class="imagem-projeto projeto-um">
+            <span>🎮</span>
+        </div>
+        <div class="informacoes-projeto">
+            <span class="categoria-projeto">GAME DESIGN</span>
+            <h4>Meu primeiro projeto</h4>
+            <p>Um espaço para apresentar suas criações e ideias.</p>
+        </div>
+    </article>
+
+    <article class="cartao-projeto">
+        <div class="imagem-projeto projeto-dois">
+            <span>🚀</span>
+        </div>
+        <div class="informacoes-projeto">
+            <span class="categoria-projeto">CRIATIVIDADE</span>
+            <h4>Projeto criativo</h4>
+            <p>Compartilhe suas experiências e experimentos.</p>
+        </div>
+    </article>
+
+</div>
+</section>
+
+
+<section class="conteudo-aba" id="projetos">
+    <h3 class="secao-titulo">Meus projetos</h3>
+
+    <div class="grade-projetos" id="grade-projetos-perfil">
+        <p class="mensagem-vazia">
+            Seus projetos aparecerão aqui.
+        </p>
+    </div>
+</section>
+
+
+
+<section class="conteudo-aba" id="atividade">
+    <h3 class="secao-titulo">Atividade recente</h3>
+
+    <div class="linha-tempo" id="lista-atividades">
+        <p class="mensagem-vazia">
+            Suas atividades aparecerão aqui.
+        </p>
+    </div>
+</section>
+
+
+<section class="conteudo-aba" id="conquistas">
+    <h3 class="secao-titulo">Minhas conquistas</h3>
+
+    <div class="grade-conquistas" id="grade-trofeus-container">
+
+        <div class="cartao-conquista" id="conquista-primeiro-passo">
+            <div class="icone-conquista">🚀</div>
+            <h4>Primeiro passo</h4>
+            <p>Seu primeiro projeto na Ludaryum.</p>
+            <span class="raridade comum">COMUM</span>
+        </div>
+
+        <div class="cartao-conquista" id="conquista-mente-criativa">
+            <div class="icone-conquista">🎨</div>
+            <h4>Mente criativa</h4>
+            <p>Compartilhe suas ideias com a comunidade.</p>
+            <span class="raridade rara">RARA</span>
+        </div>
+
+        <div class="cartao-conquista" id="conquista-em-ascensao">
+            <div class="icone-conquista">🏆</div>
+            <h4>Em ascensão</h4>
+            <p>Continue evoluindo na sua jornada.</p>
+            <span class="raridade epica">ÉPICA</span>
+        </div>
+
+        <div class="cartao-conquista bloqueada" id="conquista-grande-mestre">
+            <div class="icone-conquista">🔒</div>
+            <h4>Grande mestre</h4>
+            <p>Uma conquista aguardando desbloqueio.</p>
+            <span class="raridade bloqueada-tag">BLOQUEADA</span>
+        </div>
+
+    </div>
+</section>
+
+    </div>
+
+        <aside class="barra-lateral">
+
+        <div class="painel-jogador">
+            <h3>STATUS DO JOGADOR</h3>
+
+            <div class="nivel-lateral">
+    <span id="nivel-jogador">NÍVEL 1</span>
+    <strong id="xp-jogador">0 XP</strong>
+</div>
+
+<div class="barra-xp">
+    <div class="progresso-xp" id="progresso-xp"></div>
+</div>
+
+<p id="xp-proximo-nivel">100 XP para o próximo nível</p>
+        </div>
+
+        <div class="painel-jogador">
+            <h3>COMUNIDADE</h3>
+
+            <div class="numeros-comunidade">
+                <div>
+                    <strong id="seguidores-qtd">128</strong>
+                    <span>Seguidores</span>
+                </div>
+
+                <div>
+                    <strong id="seguindo-qtd">86</strong>
+                    <span>Seguindo</span>
+                </div>
+            </div>
+            <div id="lista-comunidades-usuario" style="margin-top: 12px; font-size: 11px; color: var(--muted, #9ca3af);"></div>
+        </div>
+
+        <div class="painel-jogador">
+            <h3>SOBRE MIM</h3>
+            <p class="sobre-jogador" id="sobre-jogador">
+    Criatividade, jogos e novas ideias.
+</p>
+        </div>
+
+        <div class="painel-jogador painel-presenca">
+    <h3>PRESENÇA NA COMUNIDADE</h3>
+
+    <div class="status-presenca">
+        <span class="indicador-online"></span>
+        <strong>Explorador ativo</strong>
+    </div>
+
+    <p>Fazendo parte da comunidade Ludaryum.</p>
+</div>
+
+<div class="painel-jogador painel-metas">
+    <h3>METAS DA JORNADA</h3>
+
+    <div class="meta-item">
+        <div class="meta-informacoes">
+            <span>Criar projetos</span>
+            <strong>2/5</strong>
+        </div>
+        <div class="barra-meta">
+            <div class="progresso-meta progresso-projetos"></div>
+        </div>
+    </div>
+
+    <div class="meta-item">
+        <div class="meta-informacoes">
+            <span>Explorar a comunidade</span>
+            <strong>8/10</strong>
+        </div>
+        <div class="barra-meta">
+            <div class="progresso-meta progresso-comunidade"></div>
+        </div>
+    </div>
+
+    <div class="meta-item">
+        <div class="meta-informacoes">
+            <span>Desbloquear conquistas</span>
+            <strong>3/5</strong>
+        </div>
+        <div class="barra-meta">
+            <div class="progresso-meta progresso-conquistas"></div>
+        </div>
+    </div>
+</div>
+
+    </aside>
+
+    </div>
+
+            <div id="formulario-edicao" hidden
+      style="margin-top: 25px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1);">
+
+    <h3 class="secao-titulo">Editar minhas informações</h3>
+
+    <label for="campo-nome">Nome</label>
+    <input id="campo-nome" type="text" value="Lia Monteiro"
+            style="display:block; width:100%; margin:8px 0 16px; padding:12px; border-radius:8px; border:1px solid #a83bd1; background:#100a16; color:#faf7fc;">
+
+    <label for="campo-usuario">Nome de usuário</label>
+    <input id="campo-usuario" type="text" value="liamonteiro"
+            style="display:block; width:100%; margin:8px 0 16px; padding:12px; border-radius:8px; border:1px solid #a83bd1; background:#100a16; color:#faf7fc;">
+
+    <label for="campo-localizacao">Localização</label>
+    <input id="campo-localizacao" type="text" placeholder="Ex: São Paulo, SP"
+            style="display:block; width:100%; margin:8px 0 16px; padding:12px; border-radius:8px; border:1px solid #a83bd1; background:#100a16; color:#faf7fc;">
+
+    <label for="campo-badge">Função / Badge</label>
+    <input id="campo-badge" type="text" placeholder="Ex: BACKEND DEVELOPER"
+            style="display:block; width:100%; margin:8px 0 16px; padding:12px; border-radius:8px; border:1px solid #a83bd1; background:#100a16; color:#faf7fc;">
+
+    <label for="campo-descricao">Descrição</label>
+    <textarea id="campo-descricao" rows="3" placeholder="Fale um pouco sobre você..."
+              style="display:block; width:100%; margin:8px 0 16px; padding:12px; border-radius:8px; border:1px solid #a83bd1; background:#100a16; color:#faf7fc; resize:vertical;"></textarea>
+
+    <h4 style="color: #c084fc; font-size: 13px; margin-bottom: 8px;">Links (GitHub, LinkedIn, E-mail)</h4>
+    <div id="container-inputs-links">
+        <div class="linha-link-input" style="display: flex; gap: 10px; margin-bottom: 10px;">
+            <input type="text" placeholder="Rótulo (ex: GitHub)" class="link-rotulo" style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #a83bd1; background: #100a16; color: #faf7fc;">
+            <input type="text" placeholder="URL ou mailto:..." class="link-url" style="flex: 2; padding: 10px; border-radius: 8px; border: 1px solid #a83bd1; background: #100a16; color: #faf7fc;">
+        </div>
+    </div>
+    <button type="button" id="botao-adicionar-link-input" style="margin-bottom: 16px; padding: 6px 12px; background: transparent; border: 1px dashed #a83bd1; color: #d77bf4; border-radius: 6px; cursor: pointer; font-size: 11px;">+ Adicionar outro link</button>
+
+    <div>
+        <button type="button" id="botao-salvar"
+                style="padding:10px 16px; border:0; border-radius:8px; background:#a83bd1; color:white; font-weight:700; cursor:pointer;">
+            SALVAR
+        </button>
+
+        <button type="button" id="botao-cancelar"
+                style="margin-left:8px; padding:10px 16px; border:1px solid #a83bd1; border-radius:8px; background:transparent; color:#d77bf4; font-weight:700; cursor:pointer;">
+            CANCELAR
+        </button>
+    </div>
+
+    <p id="mensagem-perfil" style="margin-top:12px; color:#d77bf4;" aria-live="polite"></p>
+</div>
+
+            <p class="aviso">
+                Esta é uma versão inicial do perfil. As informações exibidas
+                são exemplos e poderão ser conectadas aos dados reais da conta.
+            </p>
+        </section>
     </main>
 
-    <script>
-        async function verificarSessaoPerfil() {
-            const token = localStorage.getItem('ludarium_token') || localStorage.getItem('access_token');
-            if (!token) return;
-
-            try {
-                const response = await fetch(`/me`, {
-                    headers: { 'Authorization': 'Bearer ' + token }
-                });
-                if (!response.ok) return;
-                const user = await response.json();
-
-                const isAdmin = (user.username === 'admin' || user.email === 'admin@ludarium.com' || user.is_admin === true);
-                const elementosAdmin = document.querySelectorAll('.admin-only');
-
-                if (isAdmin) {
-                    elementosAdmin.forEach(el => {
-                        el.classList.remove('admin-only');
-                        el.style.display = 'block';
-                    });
-                } else {
-                    elementosAdmin.forEach(el => {
-                        el.classList.add('admin-only');
-                        el.style.display = 'none';
-                    });
-                }
-            } catch (e) {
-                console.warn('Erro ao verificar permissões de admin no perfil:', e);
-            }
-        }
-    </script>
+    <!-- Script externo conectado -->
     <script src="perfil.js"></script>
+
 </body>
 </html>

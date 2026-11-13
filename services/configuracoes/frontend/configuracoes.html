@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configurações | Ludaryum</title>
+
+    <link rel="stylesheet" href="configuracoes.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+
+    <main class="pagina-configuracoes">
+
+        <a href="/home-ui/home.html" class="voltar">← Voltar para Explorar</a>
+
+        <header class="cabecalho-configuracoes">
+            <span class="icone-configuracoes">⚙</span>
+            <div>
+                <h1>Configurações</h1>
+                <p>Personalize sua experiência na Ludaryum.</p>
+            </div>
+        </header>
+
+        <!-- SEÇÃO EXCLUSIVA PARA ADMINISTRADORES (Oculta por defeito) -->
+        <section class="cartao-configuracoes" id="secao-painel-admin" style="display: none; border: 1px solid var(--purple, #a83bd1);">
+            <h2>Gestão de Administrador</h2>
+            <p>Aceda ao painel de controlo global do ecossistema Ludaryum.</p>
+            <div style="margin-top: 15px;">
+                <a href="/admin-ui/admin.html" style="display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; background: rgba(168, 59, 209, 0.15); border: 1px solid var(--purple, #a83bd1); color: #fff; border-radius: 8px; font-weight: 700; text-decoration: none;">
+                    <span>🛡️</span> ABRIR PAINEL ADMINISTRATIVO
+                </a>
+            </div>
+        </section>
+
+        <section class="cartao-configuracoes">
+            <h2>Aparência</h2>
+            <p>Escolha como você prefere visualizar a plataforma.</p>
+
+            <div class="opcao-configuracao">
+                <div>
+                    <strong>Tema da plataforma</strong>
+                    <p>Escolha entre o tema escuro, claro ou personalizado para as páginas Configurações e Perfil.</p>
+                </div>
+
+                <select id="tema-plataforma">
+                    <option value="escuro">Escuro</option>
+                    <option value="claro">Claro</option>
+                    <option value="personalizado">Personalizada</option>
+                </select>
+            </div>
+
+            <div id="seletor-cor-container" style="display: none; margin-top: 15px;">
+                <div class="janela-cores">
+                    <h3>Personalize seu fundo</h3>
+                    <p>Escolha uma cor para deixar sua Ludaryum com a sua cara.</p>
+
+                    <div class="escolher-outra-cor">
+                        <label for="cor-personalizada">Escolher outra cor:</label>
+                        <input type="color" id="cor-personalizada" value="#ffffff">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="cartao-configuracoes">
+            <h2>Notificações</h2>
+            <p>Controle quais avisos deseja receber.</p>
+
+            <label class="opcao-configuracao">
+                <div>
+                    <strong>Notificações da comunidade</strong>
+                    <p>Avisos sobre interações e novidades.</p>
+                </div>
+                <input type="checkbox" id="notificacoes-comunidade" checked>
+            </label>
+
+            <label class="opcao-configuracao">
+                <div>
+                    <strong>Notificações de projetos</strong>
+                    <p>Acompanhe atualizações dos seus projetos.</p>
+                </div>
+                <input type="checkbox" id="notificacoes-projetos" checked>
+            </label>
+        </section>
+
+        <section class="cartao-configuracoes">
+            <h2>Segurança e Conta</h2>
+            <p>Gerencie sua senha de acesso.</p>
+
+            <div style="margin-top: 15px;">
+                <label for="senha-atual" style="display: block; font-size: 13px; margin-bottom: 6px; color: var(--white);">Senha Atual</label>
+                <input type="password" id="senha-atual" placeholder="Digite sua senha atual" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--background); color: var(--white); margin-bottom: 12px;">
+
+                <label for="nova-senha" style="display: block; font-size: 13px; margin-bottom: 6px; color: var(--white);">Nova Senha</label>
+                <input type="password" id="nova-senha" placeholder="Mínimo de 6 caracteres" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--background); color: var(--white); margin-bottom: 15px;">
+
+                <button type="button" id="botao-alterar-senha" style="padding: 10px 16px; border: 1px solid var(--purple); background: transparent; color: var(--purple-light); border-radius: 8px; font-weight: 700; cursor: pointer;">
+                    Alterar Senha
+                </button>
+            </div>
+        </section>
+
+        <button type="button" id="salvar-configuracoes">
+            SALVAR CONFIGURAÇÕES
+        </button>
+
+        <p id="mensagem-configuracoes" aria-live="polite"></p>
+
+    </main>
+
+    <script src="configuracoes.js"></script>
+    <script>
+        // Script dedicado para validar e exibir o cartão de admin apenas se o utilizador for admin
+        async function verificarAdminNaPaginaConfig() {
+            const token = localStorage.getItem("ludarium_token") || localStorage.getItem("token") || sessionStorage.getItem("ludaryumToken");
+            const cartaoAdmin = document.getElementById("secao-painel-admin");
+            
+            if (!token || !cartaoAdmin) return;
+
+            try {
+                const resposta = await fetch("http://localhost:8004/auth/verificar-admin", {
+                    method: "GET",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${token}`
+                    }
+                });
+
+                if (resposta.ok) {
+                    cartaoAdmin.style.display = "block"; // Revela o painel restrito para o admin
+                }
+            } catch (e) {
+                // Silenciosamente mantido oculto para utilizadores comuns
+            }
+        }
+
+        verificarAdminNaPaginaConfig();
+    </script>
+</body>
+</html>

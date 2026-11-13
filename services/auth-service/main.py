@@ -51,11 +51,15 @@ async def lifespan(app: FastAPI):
         await conn.run_sync(models.Base.metadata.create_all)
         await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR DEFAULT 'Ativo (BD)';"))
         await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS suspended_until TIMESTAMP;"))
+        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS nome_completo VARCHAR;"))
+        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS provider VARCHAR DEFAULT 'local';"))
+        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"))
+        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login TIMESTAMP;"))
         await conn.execute(text("ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS severidade VARCHAR DEFAULT 'BAIXA';"))
         await conn.execute(text("ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS detalhes_payload TEXT;"))
     yield
 
-app = FastAPI(title="Ludarium Auth Service", version="1.4.0", lifespan=lifespan)
+app = FastAPI(title="Ludarium Auth Service", version="1.4.2", lifespan=lifespan)
 
 # Configuração de CORS global e permissiva para comunicação entre microsserviços e painéis
 app.add_middleware(
@@ -109,26 +113,65 @@ async def obter_utilizador_atual(token: str = Depends(oauth2_scheme), db: AsyncS
 def raiz():
     return {"message": "Auth Service a funcionar com Telemetria, Dossiê de Cibersegurança e LGPD Opt-In!"}
 
+# --- VERIFICAÇÃO DE ADMINISTRADOR PARA O PAINEL BACK-OFFICE ---
+@app.get("/auth/verificar-admin")
+async def verificar_admin_endpoint(current_user: models.User = Depends(obter_utilizador_atual)):
+    is_admin = (
+        current_user.username == 'admin' or 
+        current_user.email == 'admin@ludarium.com' or 
+        getattr(current_user, 'is_admin', False)
+    )
+    
+    if not is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="Acesso restrito exclusivamente a administradores."
+        )
+        
+    return {"status": "success", "message": "Utilizador autorizado como administrador."}
+
 @app.post("/register", response_model=schemas.UserResponse, status_code=status.HTTP_201_CREATED)
-async def registar_utilizador(user: schemas.UserCreate, db: AsyncSession = Depends(database.get_db)):
+async def registar_utilizador(request: Request, db: AsyncSession = Depends(database.get_db)):
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    email = body.get("email")
+    password = body.get("password")
+    name = body.get("name") or body.get("nome_completo") or "Utilizador Ludaryum"
+    username = body.get("username") or email.split("@")[0] if email else "utilizador"
+    analytics_opt_in = body.get("analytics_opt_in", True)
+
+    if not email or not password:
+        raise HTTPException(status_code=400, detail="E-mail e senha são obrigatórios.")
+
     result = await db.execute(
-        select(models.User).where((models.User.username == user.username) | (models.User.email == user.email))
+        select(models.User).where((models.User.username == username) | (models.User.email == email))
     )
     db_user = result.scalar_one_or_none()
     if db_user:
         raise HTTPException(status_code=400, detail="Nome de utilizador ou email já existente.")
 
-    hashed_password = bcrypt.hashpw(user.password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-    novo_utilizador = models.User(username=user.username, email=user.email, hashed_password=hashed_password, status="Ativo (BD)")
+    hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    
+    novo_utilizador = models.User(
+        nome_completo=name,
+        username=username,
+        email=email,
+        hashed_password=hashed_password,
+        status="Ativo (BD)",
+        provider=body.get("provider", "local"),
+        created_at=datetime.utcnow()
+    )
     
     db.add(novo_utilizador)
     await db.commit()
     await db.refresh(novo_utilizador)
 
-    # Registar o consentimento LGPD Opt-In associado ao novo utilizador
     novo_consentimento = models.UserConsent(
         user_id=novo_utilizador.id,
-        analytics_opt_in=user.analytics_opt_in
+        analytics_opt_in=analytics_opt_in
     )
     db.add(novo_consentimento)
     await db.commit()
@@ -141,7 +184,6 @@ async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends
     user_agent_string = request.headers.get("user-agent", "")
     parsed_ua = parse(user_agent_string)
 
-    # Obter localização geográfica exata por IP de forma assíncrona
     localizacao_exata = await obter_localizacao_por_ip(ip_client)
 
     result = await db.execute(
@@ -150,7 +192,6 @@ async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends
     user = result.scalar_one_or_none()
     
     if not user or not bcrypt.checkpw(form_data.password.encode('utf-8'), user.hashed_password.encode('utf-8')):
-        # --- RECOLHA FORENSE DE TENTATIVA DE INVASÃO / BRUTE-FORCE ---
         tipo_disp = "Desconhecido"
         if parsed_ua.is_mobile: tipo_disp = "Telemóvel (Mobile)"
         elif parsed_ua.is_tablet: tipo_disp = "Tablet"
@@ -173,7 +214,6 @@ async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends
         await db.commit()
         raise HTTPException(status_code=400, detail="Utilizador ou senha incorretos.")
 
-    # Validação rigorosa de suspensão no momento do login com conversão segura
     suspended_dt = parse_datetime(user.suspended_until)
     if suspended_dt and suspended_dt > datetime.utcnow():
         restante = suspended_dt - datetime.utcnow()
@@ -188,7 +228,9 @@ async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends
         user.suspended_until = None
         await db.commit()
 
-    # --- RECOLHA DE TELEMETRIA E AUDITORIA FORENSE NO LOGIN COM SUCESSO ---
+    user.last_login = datetime.utcnow()
+    await db.commit()
+
     tipo_disp = "Desktop"
     if parsed_ua.is_mobile:
         tipo_disp = "Telemóvel (Mobile)"
@@ -218,9 +260,6 @@ async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends
 async def obter_perfil_atual(current_user: models.User = Depends(obter_utilizador_atual)):
     return current_user
 
-# ==========================================
-# VERIFICAÇÃO DE ESTADO PARA O PAINEL DO UTILIZADOR
-# ==========================================
 @app.get("/users/me/suspension-status")
 async def verificar_suspensao_propria(current_user: models.User = Depends(obter_utilizador_atual), db: AsyncSession = Depends(database.get_db)):
     suspended_dt = parse_datetime(current_user.suspended_until)
@@ -240,9 +279,6 @@ async def verificar_suspensao_propria(current_user: models.User = Depends(obter_
 
     return {"suspenso": False, "mensagem": "Conta ativa."}
 
-# ==========================================
-# GESTÃO DE UTILIZADORES E DOSSIÊ FORENSE (PAINEL ADMIN)
-# ==========================================
 @app.get("/users")
 async def listar_todos_utilizadores(db: AsyncSession = Depends(database.get_db)):
     result = await db.execute(select(models.User))
@@ -261,6 +297,10 @@ async def listar_todos_utilizadores(db: AsyncSession = Depends(database.get_db))
             "id": u.id,
             "email": u.email,
             "username": getattr(u, "username", u.email),
+            "nome_completo": getattr(u, "nome_completo", None),
+            "provider": getattr(u, "provider", "local"),
+            "created_at": u.created_at.isoformat() if getattr(u, "created_at", None) else None,
+            "last_login": u.last_login.isoformat() if getattr(u, "last_login", None) else None,
             "status": status_atual,
             "suspended_until": suspended_dt.isoformat() if suspended_dt else None
         })
@@ -279,12 +319,9 @@ async def excluir_utilizador_definitivamente(user_id: int, db: AsyncSession = De
 
 @app.get("/admin/dossie-completo", response_model=schemas.DossieCibersegurancaResponse)
 async def exportar_dossie_ciberseguranca(db: AsyncSession = Depends(database.get_db)):
-    """Gera o Dossiê Completo de Cibersegurança e Auditoria Forense para apresentação no Painel Admin."""
-    
     total_users_res = await db.execute(select(func.count(models.User.id)))
     total_utilizadores = total_users_res.scalar() or 0
 
-    # Contagem de tentativas de intrusão bloqueadas
     intrusao_res = await db.execute(
         select(func.count(models.AuditLog.id)).where(models.AuditLog.severidade.in_(["ALTA", "CRITICA"]))
     )
@@ -313,9 +350,6 @@ async def exportar_dossie_ciberseguranca(db: AsyncSession = Depends(database.get
 
     return dossie
 
-# ==========================================
-# DOSSIÊ DE CONFORMIDADE LGPD (PAINEL ADMIN)
-# ==========================================
 @app.get("/api/admin/dossier")
 async def obter_dossie_lgpd_admin(db: AsyncSession = Depends(database.get_db), current_user: models.User = Depends(obter_utilizador_atual)):
     isAdmin = (current_user.username == 'admin' or current_user.email == 'admin@ludarium.com' or getattr(current_user, 'is_admin', False))
@@ -403,9 +437,6 @@ async def pesquisar_utilizador(
         "email": user.email
     }
 
-# ==========================================
-# MENSAGENS PRIVADAS E COMUNICAÇÃO ADMIN
-# ==========================================
 @app.get("/messages/my-messages")
 async def listar_mensagens_utilizador(current_user: models.User = Depends(obter_utilizador_atual), db: AsyncSession = Depends(database.get_db)):
     try:
@@ -468,16 +499,34 @@ async def apagar_mensagem_privada(
 
 @app.delete("/admin/dossie-forense/limpar")
 async def limpar_historico_acessos(db: AsyncSession = Depends(database.get_db), current_user: models.User = Depends(obter_utilizador_atual)):
-    # Validação rigorosa de Administrador
     isAdmin = (current_user.username == 'admin' or current_user.email == 'admin@ludarium.com' or getattr(current_user, 'is_admin', False))
     if not isAdmin:
         raise HTTPException(status_code=403, detail="Acesso restrito exclusivamente a administradores.")
 
     try:
-        # Executa a limpeza de todos os registos da tabela de audit_logs
         await db.execute(text("DELETE FROM audit_logs;"))
         await db.commit()
         return {"message": "Histórico de acessos e dossiê forense limpo com sucesso!"}
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"Erro ao limpar histórico forense: {str(e)}")
+
+@app.post("/recover-password")
+async def recuperar_senha(dados: dict, db: AsyncSession = Depends(database.get_db)):
+    email = dados.get("email")
+    nova_senha = dados.get("new_password")
+    
+    if not email or not nova_senha:
+        raise HTTPException(status_code=400, detail="Por favor, forneça o email e a nova senha.")
+        
+    result = await db.execute(select(models.User).where(models.User.email == email))
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="Email não associado a nenhuma conta.")
+        
+    hashed_password = bcrypt.hashpw(nova_senha.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    user.hashed_password = hashed_password
+    await db.commit()
+    
+    return {"message": "Senha redefinida com sucesso! Pode fazer login com a nova palavra-passe."}
